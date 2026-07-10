@@ -7,3 +7,453 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  ADVISOR
+  TECHNICIAN
+  INVENTORY_MANAGER
+
+  @@map("user_role")
+}
+
+enum ServiceOrderStatus {
+  RECEIVED
+  DIAGNOSIS
+  QUOTED
+  APPROVED
+  IN_PROGRESS
+  QUALITY_CONTROL
+  READY_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+
+  @@map("service_order_status")
+}
+
+enum ServiceOrderPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+
+  @@map("service_order_priority")
+}
+
+enum FuelLevel {
+  EMPTY
+  QUARTER
+  HALF
+  THREE_QUARTERS
+  FULL
+
+  @@map("fuel_level")
+}
+
+enum QuoteStatus {
+  DRAFT
+  ACTIVE
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+
+  @@map("quote_status")
+}
+
+enum QuoteItemType {
+  PART
+  LABOR
+  SERVICE
+  OTHER
+
+  @@map("quote_item_type")
+}
+
+enum InventoryMovementType {
+  INBOUND
+  OUTBOUND
+  RESERVATION
+  RELEASE
+  ADJUSTMENT
+  RETURN
+
+  @@map("inventory_movement_type")
+}
+
+enum RepairTaskStatus {
+  PENDING
+  IN_PROGRESS
+  BLOCKED
+  COMPLETED
+  CANCELLED
+
+  @@map("repair_task_status")
+}
+
+enum ProductUnit {
+  UNIT
+  LITER
+  MILLILITER
+  KILOGRAM
+  GRAM
+  METER
+  CENTIMETER
+  HOUR
+  PACKAGE
+
+  @@map("product_unit")
+}
+
+enum EvidenceStage {
+  RECEPTION
+  DIAGNOSIS
+  REPAIR
+  QUALITY_CONTROL
+  DELIVERY
+  OTHER
+
+  @@map("evidence_stage")
+}
+
+model Role {
+  id          String           @id @default(uuid()) @db.Uuid
+  name        UserRole         @unique
+  description String?
+  users       User[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  name        String           @unique
+  description String?
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id") @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String     @map("permission_id") @db.Uuid
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId], map: "role_permissions_permission_id_idx")
+  @@map("role_permissions")
+}
+
+model User {
+  id                         String                      @id @default(uuid()) @db.Uuid
+  roleId                     String                      @map("role_id") @db.Uuid
+  role                       Role                        @relation(fields: [roleId], references: [id])
+  name                       String
+  email                      String                      @unique
+  passwordHash               String                      @map("password_hash")
+  isActive                   Boolean                     @default(true) @map("is_active")
+  createdAt                  DateTime                    @default(now()) @map("created_at")
+  updatedAt                  DateTime                    @updatedAt @map("updated_at")
+  createdServiceOrders       ServiceOrder[]              @relation("ServiceOrderCreatedBy")
+  assignedServiceOrders      ServiceOrder[]              @relation("ServiceOrderAssignedTechnician")
+  technicianAssignments      ServiceOrderTechnician[]    @relation("ServiceOrderTechnicianTechnician")
+  assignedTechnicians        ServiceOrderTechnician[]    @relation("ServiceOrderTechnicianAssignedBy")
+  statusChanges              ServiceOrderStatusHistory[]
+  diagnoses                  Diagnosis[]
+  quotes                     Quote[]
+  inventoryMovements         InventoryMovement[]
+  repairTasks                RepairTask[]
+  evidences                  Evidence[]
+  comments                   Comment[]
+
+  @@index([roleId], map: "users_role_id_idx")
+  @@map("users")
+}
+
+model Customer {
+  id            String         @id @default(uuid()) @db.Uuid
+  fullName      String         @map("full_name")
+  phone         String?
+  whatsapp      String?
+  email         String?
+  document      String?
+  address       String?
+  notes         String?
+  vehicles      Vehicle[]
+  serviceOrders ServiceOrder[]
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@map("customers")
+}
+
+model Vehicle {
+  id            String         @id @default(uuid()) @db.Uuid
+  customerId    String         @map("customer_id") @db.Uuid
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  plate         String         @unique
+  brand         String
+  model         String
+  year          Int?
+  color         String?
+  vin           String?
+  mileage       Int?
+  vehicleType   String?        @map("vehicle_type")
+  notes         String?
+  serviceOrders ServiceOrder[]
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  @@index([customerId], map: "vehicles_customer_id_idx")
+  @@map("vehicles")
+}
+
+model ServiceOrder {
+  id                    String                      @id @default(uuid()) @db.Uuid
+  code                  String                      @unique
+  customerId            String                      @map("customer_id") @db.Uuid
+  customer              Customer                    @relation(fields: [customerId], references: [id])
+  vehicleId             String                      @map("vehicle_id") @db.Uuid
+  vehicle               Vehicle                     @relation(fields: [vehicleId], references: [id])
+  assignedTechnicianId  String?                     @map("assigned_technician_id") @db.Uuid
+  assignedTechnician    User?                       @relation("ServiceOrderAssignedTechnician", fields: [assignedTechnicianId], references: [id])
+  createdById           String                      @map("created_by_id") @db.Uuid
+  createdBy             User                        @relation("ServiceOrderCreatedBy", fields: [createdById], references: [id])
+  status                ServiceOrderStatus          @default(RECEIVED)
+  priority              ServiceOrderPriority?       @default(NORMAL)
+  reportedIssues        String?                     @map("reported_issues")
+  receptionNotes        String?                     @map("reception_notes")
+  mileageIn             Int?                        @map("mileage_in")
+  fuelLevel             FuelLevel?                  @map("fuel_level")
+  estimatedDeliveryDate DateTime?                   @map("estimated_delivery_date") @db.Date
+  totalEstimated        Decimal?                    @map("total_estimated") @db.Decimal(12, 2)
+  totalApproved         Decimal?                    @map("total_approved") @db.Decimal(12, 2)
+  totalFinal            Decimal?                    @map("total_final") @db.Decimal(12, 2)
+  closedAt              DateTime?                   @map("closed_at")
+  technicians           ServiceOrderTechnician[]
+  statusHistory         ServiceOrderStatusHistory[]
+  diagnoses             Diagnosis[]
+  quotes                Quote[]
+  inventoryMovements    InventoryMovement[]
+  repairTasks           RepairTask[]
+  evidences             Evidence[]
+  comments              Comment[]
+  createdAt             DateTime                    @default(now()) @map("created_at")
+  updatedAt             DateTime                    @updatedAt @map("updated_at")
+
+  @@index([customerId], map: "service_orders_customer_id_idx")
+  @@index([vehicleId], map: "service_orders_vehicle_id_idx")
+  @@index([assignedTechnicianId], map: "service_orders_assigned_technician_id_idx")
+  @@index([createdById], map: "service_orders_created_by_id_idx")
+  @@map("service_orders")
+}
+
+model ServiceOrderTechnician {
+  serviceOrderId String       @map("service_order_id") @db.Uuid
+  serviceOrder   ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  technicianId   String       @map("technician_id") @db.Uuid
+  technician     User         @relation("ServiceOrderTechnicianTechnician", fields: [technicianId], references: [id])
+  assignedById   String?      @map("assigned_by_id") @db.Uuid
+  assignedBy     User?        @relation("ServiceOrderTechnicianAssignedBy", fields: [assignedById], references: [id])
+  assignedAt     DateTime     @default(now()) @map("assigned_at")
+
+  @@id([serviceOrderId, technicianId])
+  @@index([technicianId], map: "service_order_technicians_technician_id_idx")
+  @@index([assignedById], map: "service_order_technicians_assigned_by_id_idx")
+  @@map("service_order_technicians")
+}
+
+model ServiceOrderStatusHistory {
+  id             String              @id @default(uuid()) @db.Uuid
+  serviceOrderId String              @map("service_order_id") @db.Uuid
+  serviceOrder   ServiceOrder        @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  previousStatus ServiceOrderStatus? @map("previous_status")
+  newStatus      ServiceOrderStatus  @map("new_status")
+  changedById    String              @map("changed_by_id") @db.Uuid
+  changedBy      User                @relation(fields: [changedById], references: [id])
+  comment        String?
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  @@index([serviceOrderId], map: "service_order_status_history_service_order_id_idx")
+  @@index([changedById], map: "service_order_status_history_changed_by_id_idx")
+  @@map("service_order_status_history")
+}
+
+model Diagnosis {
+  id                 String       @id @default(uuid()) @db.Uuid
+  serviceOrderId     String       @map("service_order_id") @db.Uuid
+  serviceOrder       ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  technicianId       String       @map("technician_id") @db.Uuid
+  technician         User         @relation(fields: [technicianId], references: [id])
+  description        String
+  requiredPartsNotes String?      @map("required_parts_notes")
+  suggestedLabor     String?      @map("suggested_labor")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  @@index([serviceOrderId], map: "diagnoses_service_order_id_idx")
+  @@index([technicianId], map: "diagnoses_technician_id_idx")
+  @@map("diagnoses")
+}
+
+model Quote {
+  id             String       @id @default(uuid()) @db.Uuid
+  serviceOrderId String       @map("service_order_id") @db.Uuid
+  serviceOrder   ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  createdById    String       @map("created_by_id") @db.Uuid
+  createdBy      User         @relation(fields: [createdById], references: [id])
+  status         QuoteStatus  @default(DRAFT)
+  subtotal       Decimal      @default(0) @db.Decimal(12, 2)
+  discount       Decimal?     @db.Decimal(12, 2)
+  tax            Decimal?     @db.Decimal(12, 2)
+  total          Decimal      @default(0) @db.Decimal(12, 2)
+  approvalMethod String?      @map("approval_method")
+  approvedAt     DateTime?    @map("approved_at")
+  rejectedAt     DateTime?    @map("rejected_at")
+  items          QuoteItem[]
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([serviceOrderId], map: "quotes_service_order_id_idx")
+  @@index([createdById], map: "quotes_created_by_id_idx")
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id                 String            @id @default(uuid()) @db.Uuid
+  quoteId            String            @map("quote_id") @db.Uuid
+  quote              Quote             @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  inventoryProductId String?           @map("inventory_product_id") @db.Uuid
+  inventoryProduct   InventoryProduct? @relation(fields: [inventoryProductId], references: [id])
+  type               QuoteItemType
+  description        String
+  quantity           Decimal           @db.Decimal(12, 3)
+  unitPrice          Decimal           @map("unit_price") @db.Decimal(12, 2)
+  costPrice          Decimal?          @map("cost_price") @db.Decimal(12, 2)
+  total              Decimal           @db.Decimal(12, 2)
+  isApproved         Boolean?          @map("is_approved")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  @@index([quoteId], map: "quote_items_quote_id_idx")
+  @@index([inventoryProductId], map: "quote_items_inventory_product_id_idx")
+  @@map("quote_items")
+}
+
+model InventoryCategory {
+  id          String             @id @default(uuid()) @db.Uuid
+  name        String             @unique
+  description String?
+  isActive    Boolean            @default(true) @map("is_active")
+  products    InventoryProduct[]
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  @@map("inventory_categories")
+}
+
+model InventoryProduct {
+  id                 String              @id @default(uuid()) @db.Uuid
+  categoryId         String?             @map("category_id") @db.Uuid
+  category           InventoryCategory?  @relation(fields: [categoryId], references: [id])
+  name               String
+  sku                String?             @unique
+  brand              String?
+  description        String?
+  unit               ProductUnit
+  costPrice          Decimal?            @map("cost_price") @db.Decimal(12, 2)
+  salePrice          Decimal?            @map("sale_price") @db.Decimal(12, 2)
+  currentStock       Decimal             @default(0) @map("current_stock") @db.Decimal(12, 3)
+  minimumStock       Decimal?            @map("minimum_stock") @db.Decimal(12, 3)
+  location           String?
+  isActive           Boolean             @default(true) @map("is_active")
+  quoteItems         QuoteItem[]
+  inventoryMovements InventoryMovement[]
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  @@index([categoryId], map: "inventory_products_category_id_idx")
+  @@map("inventory_products")
+}
+
+model InventoryMovement {
+  id             String                @id @default(uuid()) @db.Uuid
+  productId      String                @map("product_id") @db.Uuid
+  product        InventoryProduct      @relation(fields: [productId], references: [id])
+  serviceOrderId String?               @map("service_order_id") @db.Uuid
+  serviceOrder   ServiceOrder?         @relation(fields: [serviceOrderId], references: [id])
+  createdById    String                @map("created_by_id") @db.Uuid
+  createdBy      User                  @relation(fields: [createdById], references: [id])
+  type           InventoryMovementType
+  quantity       Decimal               @db.Decimal(12, 3)
+  previousStock  Decimal?              @map("previous_stock") @db.Decimal(12, 3)
+  newStock       Decimal?              @map("new_stock") @db.Decimal(12, 3)
+  notes          String?
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  @@index([productId], map: "inventory_movements_product_id_idx")
+  @@index([serviceOrderId], map: "inventory_movements_service_order_id_idx")
+  @@index([createdById], map: "inventory_movements_created_by_id_idx")
+  @@map("inventory_movements")
+}
+
+model RepairTask {
+  id                   String           @id @default(uuid()) @db.Uuid
+  serviceOrderId       String           @map("service_order_id") @db.Uuid
+  serviceOrder         ServiceOrder     @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  assignedTechnicianId String?          @map("assigned_technician_id") @db.Uuid
+  assignedTechnician   User?            @relation(fields: [assignedTechnicianId], references: [id])
+  title                String
+  description          String?
+  status               RepairTaskStatus @default(PENDING)
+  startedAt            DateTime?        @map("started_at")
+  completedAt          DateTime?        @map("completed_at")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  @@index([serviceOrderId], map: "repair_tasks_service_order_id_idx")
+  @@index([assignedTechnicianId], map: "repair_tasks_assigned_technician_id_idx")
+  @@map("repair_tasks")
+}
+
+model Evidence {
+  id             String        @id @default(uuid()) @db.Uuid
+  serviceOrderId String        @map("service_order_id") @db.Uuid
+  serviceOrder   ServiceOrder  @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  uploadedById   String        @map("uploaded_by_id") @db.Uuid
+  uploadedBy     User          @relation(fields: [uploadedById], references: [id])
+  stage          EvidenceStage
+  fileUrl        String        @map("file_url")
+  storagePath    String?       @map("storage_path")
+  fileType       String?       @map("file_type")
+  description    String?
+  metadata       Json?
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  @@index([serviceOrderId], map: "evidences_service_order_id_idx")
+  @@index([uploadedById], map: "evidences_uploaded_by_id_idx")
+  @@map("evidences")
+}
+
+model Comment {
+  id             String       @id @default(uuid()) @db.Uuid
+  serviceOrderId String       @map("service_order_id") @db.Uuid
+  serviceOrder   ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  userId         String       @map("user_id") @db.Uuid
+  user           User         @relation(fields: [userId], references: [id])
+  content        String
+  isInternal     Boolean      @default(true) @map("is_internal")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([serviceOrderId], map: "comments_service_order_id_idx")
+  @@index([userId], map: "comments_user_id_idx")
+  @@map("comments")
+}

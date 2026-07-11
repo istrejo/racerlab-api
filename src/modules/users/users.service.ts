@@ -8,6 +8,7 @@ import { Role, User } from '@prisma/client';
 import { PasswordHasherService } from '../../common/security/password-hasher.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 
 type UserWithRole = User & { role: Pick<Role, 'name'> };
@@ -76,6 +77,53 @@ export class UsersService {
     return this.mapUserToResponse(user);
   }
 
+  async update(id: string, dto: UpdateUserDto): Promise<UserResponseDto> {
+    const data: {
+      name?: string;
+      email?: string;
+      roleId?: string;
+      isActive?: boolean;
+    } = {
+      name: dto.name,
+      email: dto.email,
+      isActive: dto.isActive,
+    };
+
+    if (dto.role) {
+      const role = await this.prisma.role.findUnique({
+        where: { name: dto.role },
+      });
+
+      if (!role) {
+        throw new ServiceUnavailableException(
+          'Bootstrap roles are not available. Run the Prisma seed before updating users.',
+        );
+      }
+
+      data.roleId = role.id;
+    }
+
+    try {
+      const user = await this.prisma.user.update({
+        where: { id },
+        data,
+        include: { role: true },
+      });
+
+      return this.mapUserToResponse(user);
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) {
+        throw new ConflictException('A user with this email already exists.');
+      }
+
+      if (this.isRecordNotFoundError(error)) {
+        throw new NotFoundException('User not found.');
+      }
+
+      throw error;
+    }
+  }
+
   private mapUserToResponse(user: UserWithRole): UserResponseDto {
     return {
       id: user.id,
@@ -94,6 +142,15 @@ export class UsersService {
       error !== null &&
       'code' in error &&
       error.code === 'P2002'
+    );
+  }
+
+  private isRecordNotFoundError(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2025'
     );
   }
 }

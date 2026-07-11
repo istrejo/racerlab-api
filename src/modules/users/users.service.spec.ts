@@ -11,7 +11,12 @@ describe('UsersService', () => {
   let service: UsersService;
   let prisma: {
     role: { findUnique: jest.Mock };
-    user: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock };
+    user: {
+      create: jest.Mock;
+      findMany: jest.Mock;
+      findUnique: jest.Mock;
+      update: jest.Mock;
+    };
   };
   let passwordHasher: { hash: jest.Mock };
 
@@ -37,6 +42,7 @@ describe('UsersService', () => {
         create: jest.fn(),
         findMany: jest.fn(),
         findUnique: jest.fn(),
+        update: jest.fn(),
       },
     };
     passwordHasher = { hash: jest.fn() };
@@ -150,5 +156,109 @@ describe('UsersService', () => {
     await expect(service.findOne(storedUser.id)).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+
+  it('updates a user, resolves a new role, and returns a sanitized response', async () => {
+    prisma.role.findUnique.mockResolvedValue({ id: 'role-2' });
+    prisma.user.update.mockResolvedValue({
+      ...storedUser,
+      name: 'Grace Hopper',
+      email: 'grace@example.com',
+      roleId: 'role-2',
+      role: { name: UserRole.MANAGER },
+      isActive: false,
+    });
+
+    await expect(
+      service.update(storedUser.id, {
+        name: 'Grace Hopper',
+        email: 'grace@example.com',
+        role: UserRole.MANAGER,
+        isActive: false,
+      }),
+    ).resolves.toEqual({
+      id: storedUser.id,
+      name: 'Grace Hopper',
+      email: 'grace@example.com',
+      role: UserRole.MANAGER,
+      isActive: false,
+      createdAt,
+      updatedAt,
+    });
+
+    expect(prisma.role.findUnique).toHaveBeenCalledWith({
+      where: { name: UserRole.MANAGER },
+    });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: storedUser.id },
+      data: {
+        name: 'Grace Hopper',
+        email: 'grace@example.com',
+        roleId: 'role-2',
+        isActive: false,
+      },
+      include: { role: true },
+    });
+  });
+
+  it('updates a user without role lookup when the role does not change', async () => {
+    prisma.user.update.mockResolvedValue({
+      ...storedUser,
+      name: 'Ada Byron',
+    });
+
+    await expect(
+      service.update(storedUser.id, {
+        name: 'Ada Byron',
+      }),
+    ).resolves.toEqual({
+      id: storedUser.id,
+      name: 'Ada Byron',
+      email: storedUser.email,
+      role: UserRole.ADMIN,
+      isActive: true,
+      createdAt,
+      updatedAt,
+    });
+
+    expect(prisma.role.findUnique).not.toHaveBeenCalled();
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: storedUser.id },
+      data: {
+        name: 'Ada Byron',
+      },
+      include: { role: true },
+    });
+  });
+
+  it('rejects duplicate updated emails with a conflict exception', async () => {
+    prisma.user.update.mockRejectedValue({ code: 'P2002' });
+
+    await expect(
+      service.update(storedUser.id, {
+        email: 'ada@example.com',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('throws not found when updating a missing user', async () => {
+    prisma.user.update.mockRejectedValue({ code: 'P2025' });
+
+    await expect(
+      service.update(storedUser.id, {
+        name: 'Missing User',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('fails explicitly when the requested update role is missing', async () => {
+    prisma.role.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.update(storedUser.id, {
+        role: UserRole.TECHNICIAN,
+      }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 });

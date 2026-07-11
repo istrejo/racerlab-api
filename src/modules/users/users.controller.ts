@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Patch,
   Param,
   ParseUUIDPipe,
   Post,
@@ -17,6 +18,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UsersService } from './users.service';
 
@@ -65,5 +67,27 @@ export class UsersController {
   @ApiNotFoundResponse({ description: 'User not found.' })
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<UserResponseDto> {
     return this.usersService.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Update a bootstrap user (temporary unauthenticated endpoint)',
+    description:
+      'Temporary bootstrap-only endpoint. JWT/Auth/RBAC protection is out of scope for this change and must be added before production exposure. Password updates are intentionally excluded from this bootstrap flow.',
+  })
+  @ApiOkResponse({ type: UserResponseDto })
+  @ApiBadRequestResponse({ description: 'Invalid user id or update payload.' })
+  @ApiNotFoundResponse({ description: 'User not found.' })
+  @ApiConflictResponse({
+    description: 'A user with this email already exists.',
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'Bootstrap roles are not available.',
+  })
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateUserDto,
+  ): Promise<UserResponseDto> {
+    return this.usersService.update(id, dto);
   }
 }

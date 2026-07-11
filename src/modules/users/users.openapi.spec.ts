@@ -23,6 +23,7 @@ describe('Users OpenAPI contract', () => {
             create: jest.fn(),
             findAll: jest.fn(),
             findOne: jest.fn(),
+            update: jest.fn(),
           },
         },
       ],
@@ -41,10 +42,11 @@ describe('Users OpenAPI contract', () => {
     await app.close();
   });
 
-  it('documents create, list, and detail users operations', () => {
+  it('documents create, list, detail, and update users operations', () => {
     expect(document.paths['/users']?.post).toBeDefined();
     expect(document.paths['/users']?.get).toBeDefined();
     expect(document.paths['/users/{id}']?.get).toBeDefined();
+    expect(document.paths['/users/{id}']?.patch).toBeDefined();
   });
 
   it('discloses temporary bootstrap-only access without claiming current auth protection', () => {
@@ -52,6 +54,7 @@ describe('Users OpenAPI contract', () => {
       document.paths['/users']?.post,
       document.paths['/users']?.get,
       document.paths['/users/{id}']?.get,
+      document.paths['/users/{id}']?.patch,
     ];
 
     for (const operation of operations) {
@@ -82,6 +85,25 @@ describe('Users OpenAPI contract', () => {
     expect(
       Object.keys(document.paths['/users/{id}']?.get?.responses ?? {}),
     ).toEqual(['200', '400', '404']);
+    expect(
+      Object.keys(document.paths['/users/{id}']?.patch?.responses ?? {}),
+    ).toEqual(['200', '400', '404', '409', '503']);
+  });
+
+  it('documents an update schema without password fields', () => {
+    const updateUserSchema = document.components?.schemas?.UpdateUserDto as
+      OpenApiSchema | undefined;
+    const updateUserProperties = updateUserSchema?.properties ?? {};
+    const updateUserRequired = updateUserSchema?.required ?? [];
+
+    expect(Object.keys(updateUserProperties)).toEqual([
+      'name',
+      'email',
+      'role',
+      'isActive',
+    ]);
+    expect(updateUserProperties).not.toHaveProperty('password');
+    expect(updateUserRequired).toEqual([]);
   });
 
   it('keeps credential fields and role database ids out of public response schemas', () => {

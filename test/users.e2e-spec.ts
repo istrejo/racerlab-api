@@ -12,7 +12,12 @@ describe('UsersController (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: {
     role: { findUnique: jest.Mock };
-    user: { create: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock };
+    user: {
+      create: jest.Mock;
+      findMany: jest.Mock;
+      findUnique: jest.Mock;
+      update: jest.Mock;
+    };
   };
   let passwordHasher: { hash: jest.Mock };
 
@@ -37,6 +42,13 @@ describe('UsersController (e2e)', () => {
         create: jest.fn().mockResolvedValue(user),
         findMany: jest.fn().mockResolvedValue([user]),
         findUnique: jest.fn().mockResolvedValue(user),
+        update: jest.fn().mockResolvedValue({
+          ...user,
+          name: 'Grace Hopper',
+          email: 'grace@example.com',
+          role: { name: UserRole.MANAGER },
+          isActive: false,
+        }),
       },
     };
     passwordHasher = { hash: jest.fn().mockResolvedValue('hashed-password') };
@@ -117,6 +129,30 @@ describe('UsersController (e2e)', () => {
     });
   });
 
+  it('PATCH /users/:id updates a sanitized user response', async () => {
+    const response = await request(app.getHttpServer())
+      .patch(`/users/${user.id}`)
+      .send({
+        name: 'Grace Hopper',
+        email: 'grace@example.com',
+        role: UserRole.MANAGER,
+        isActive: false,
+      })
+      .expect(200);
+
+    expect(response.body).toEqual({
+      id: user.id,
+      name: 'Grace Hopper',
+      email: 'grace@example.com',
+      role: UserRole.MANAGER,
+      isActive: false,
+      createdAt: createdAt.toISOString(),
+      updatedAt: updatedAt.toISOString(),
+    });
+    expect(response.body).not.toHaveProperty('passwordHash');
+    expect(response.body).not.toHaveProperty('roleId');
+  });
+
   it('POST /users rejects invalid bodies', async () => {
     await request(app.getHttpServer())
       .post('/users')
@@ -132,6 +168,26 @@ describe('UsersController (e2e)', () => {
 
   it('GET /users/:id rejects invalid UUIDs', async () => {
     await request(app.getHttpServer()).get('/users/not-a-uuid').expect(400);
+  });
+
+  it('PATCH /users/:id rejects invalid bodies', async () => {
+    await request(app.getHttpServer())
+      .patch(`/users/${user.id}`)
+      .send({
+        name: '',
+        email: 'not-an-email',
+        role: 'OWNER',
+        password: 'not allowed',
+        extra: 'not allowed',
+      })
+      .expect(400);
+  });
+
+  it('PATCH /users/:id rejects invalid UUIDs', async () => {
+    await request(app.getHttpServer())
+      .patch('/users/not-a-uuid')
+      .send({ name: 'Grace Hopper' })
+      .expect(400);
   });
 
   it('POST /users rejects duplicate emails', async () => {
@@ -152,5 +208,32 @@ describe('UsersController (e2e)', () => {
     prisma.user.findUnique.mockResolvedValueOnce(null);
 
     await request(app.getHttpServer()).get(`/users/${user.id}`).expect(404);
+  });
+
+  it('PATCH /users/:id rejects duplicate emails', async () => {
+    prisma.user.update.mockRejectedValueOnce({ code: 'P2002' });
+
+    await request(app.getHttpServer())
+      .patch(`/users/${user.id}`)
+      .send({ email: 'grace@example.com' })
+      .expect(409);
+  });
+
+  it('PATCH /users/:id returns not found for a missing user', async () => {
+    prisma.user.update.mockRejectedValueOnce({ code: 'P2025' });
+
+    await request(app.getHttpServer())
+      .patch(`/users/${user.id}`)
+      .send({ name: 'Grace Hopper' })
+      .expect(404);
+  });
+
+  it('PATCH /users/:id returns service unavailable when the requested role is missing', async () => {
+    prisma.role.findUnique.mockResolvedValueOnce(null);
+
+    await request(app.getHttpServer())
+      .patch(`/users/${user.id}`)
+      .send({ role: UserRole.TECHNICIAN })
+      .expect(503);
   });
 });

@@ -10,6 +10,7 @@ describe('UsersController', () => {
     create: jest.Mock;
     findAll: jest.Mock;
     findOne: jest.Mock;
+    update: jest.Mock;
   };
 
   const userResponse = {
@@ -27,6 +28,7 @@ describe('UsersController', () => {
       create: jest.fn(),
       findAll: jest.fn(),
       findOne: jest.fn(),
+      update: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -69,5 +71,26 @@ describe('UsersController', () => {
       userResponse,
     );
     expect(usersService.findOne).toHaveBeenCalledWith(userResponse.id);
+  });
+
+  it('delegates user updates to the service', async () => {
+    usersService.update.mockResolvedValue({
+      ...userResponse,
+      name: 'Grace Hopper',
+    });
+
+    await expect(
+      usersController.update(userResponse.id, {
+        name: 'Grace Hopper',
+        isActive: false,
+      }),
+    ).resolves.toEqual({
+      ...userResponse,
+      name: 'Grace Hopper',
+    });
+    expect(usersService.update).toHaveBeenCalledWith(userResponse.id, {
+      name: 'Grace Hopper',
+      isActive: false,
+    });
   });
 });

@@ -1,0 +1,31 @@
+schema: spec-driven
+
+context: |
+  Project: racerlab-api
+  Stack: NestJS 11+, TypeScript, Prisma ORM, Supabase PostgreSQL, Supabase Storage, Jest
+  Architecture: Modular NestJS API with health and users modules, Prisma service/module, Swagger/OpenAPI as contract source
+  Testing: Jest unit tests in src/**/*.spec.ts and e2e tests in test/**/*.e2e-spec.ts via ts-jest
+  Style: TypeScript with ESLint (typescript-eslint + prettier), Prettier formatting, strictNullChecks enabled, CommonJS sourceType in ESLint config
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    - Follow existing code patterns
+    - tdd: true
+    - test_command: pnpm test
+  verify:
+    test_command: pnpm test:e2e
+    build_command: pnpm build
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas

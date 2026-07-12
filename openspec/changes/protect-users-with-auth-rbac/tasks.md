@@ -37,8 +37,8 @@ Chain strategy: stacked-to-main
 ## Phase 2: Auth Slice
 
 - [x] 2.1 Update `package.json`, `pnpm-lock.yaml`, `src/app.module.ts`, and create `src/config/auth.config.ts` for JWT/passport wiring with fail-fast secret/TTL config.
-- [ ] 2.2 Create `src/modules/auth/{auth.module.ts,auth.controller.ts,auth.service.ts,dto/login.dto.ts,dto/login-response.dto.ts,jwt.strategy.ts}` for normalized login, token signing, and uniform invalid/inactive rejection.
-- [ ] 2.3 Create `src/common/auth/authenticated-user.ts`, `src/common/decorators/{current-user.decorator.ts,roles.decorator.ts}`, `src/common/guards/{jwt-auth.guard.ts,roles.guard.ts}`, and add `verify()` to `src/common/security/password-hasher.service.ts`.
+- [x] 2.2 Create `src/modules/auth/{auth.module.ts,auth.controller.ts,auth.service.ts,dto/login.dto.ts,dto/login-response.dto.ts,jwt.strategy.ts}` for normalized login, token signing, and uniform invalid/inactive rejection.
+- [x] 2.3 Create `src/common/auth/authenticated-user.ts`, `src/common/decorators/{current-user.decorator.ts,roles.decorator.ts}`, `src/common/guards/{jwt-auth.guard.ts,roles.guard.ts}`, and add `verify()` to `src/common/security/password-hasher.service.ts`.
 
 ## Phase 3: Users Protection
 

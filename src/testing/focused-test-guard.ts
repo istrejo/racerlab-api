@@ -2,6 +2,9 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
 
 const FOCUSED_TEST_PATTERNS = [
+  { label: 'fit', matcher: /(^|\s)fit\s*\(/m },
+  { label: 'fdescribe', matcher: /(^|\s)fdescribe\s*\(/m },
+  { label: 'fit.each', matcher: /(^|\s)fit\.each\s*\(/m },
   { label: 'it.only', matcher: /(^|\s)it\.only\s*\(/m },
   { label: 'describe.only', matcher: /(^|\s)describe\.only\s*\(/m },
   { label: 'test.only', matcher: /(^|\s)test\.only\s*\(/m },

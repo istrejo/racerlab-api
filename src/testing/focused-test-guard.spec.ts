@@ -41,6 +41,9 @@ describe('ensureNoFocusedTests', () => {
     'describe.only.each([[1]])("focused", () => {});',
     'test.concurrent.only("focused", async () => {});',
     'it.concurrent.only("focused", async () => {});',
+    "fit('focused', () => {});",
+    "fdescribe('focused', () => {});",
+    'fit.each([[1]])("focused", () => {});',
   ])('fails fast when the Jest focused variant is present: %s', (source) => {
     const sandbox = mkdtempSync(join(tmpdir(), 'focused-guard-'));
 
@@ -61,6 +64,7 @@ describe('ensureNoFocusedTests', () => {
         "  // test.only.each([[1]])('commented', () => {});",
         "  const label = 'describe.only(each should stay text)';",
         '  const tpl = `test.concurrent.only should stay text`;',
+        "  const focusedAlias = 'fit and fdescribe should stay text';",
         "  it('works', () => expect(label + tpl).toContain('text'));",
         '});',
       ].join('\n'),

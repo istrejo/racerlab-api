@@ -40,7 +40,7 @@ Bearer request -> JwtAuthGuard -> JwtStrategy
 | `src/common/auth/authenticated-user.ts` | Create | Request user contract used by guards/decorators. |
 | `src/common/utils/email-normalizer.ts` | Create | Shared email normalization. |
 | `src/common/security/password-hasher.service.ts` | Modify | Add `verify(password, hash)`. |
-| `src/modules/users/users.controller.ts` | Modify | Add Bearer docs, guards, ADMIN role, 401/403 responses. |
+| `src/modules/users/users.controller.ts` | Modify | Add Bearer docs, `JwtAuthGuard`, `RolesGuard`, `@Roles(UserRole.ADMIN)`, and explicit `401/403` responses. |
 | `src/modules/users/users.service.ts` | Modify | Normalize emails before create/update persistence. |
 | `src/modules/users/*.spec.ts`, `test/users.e2e-spec.ts` | Modify | Replace public-route expectations with auth/RBAC coverage. |
 

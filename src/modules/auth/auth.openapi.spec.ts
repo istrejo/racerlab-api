@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DocumentBuilder, OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
+import { OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
+import { createSwaggerDocumentBuilder } from '../../config/swagger.config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 
@@ -29,7 +30,7 @@ describe('Auth OpenAPI contract', () => {
 
     document = SwaggerModule.createDocument(
       app,
-      new DocumentBuilder().setTitle('RacerLab API').build(),
+      createSwaggerDocumentBuilder().build(),
     );
   });
 
@@ -41,6 +42,7 @@ describe('Auth OpenAPI contract', () => {
     const operation = document.paths['/auth/login']?.post;
 
     expect(operation).toBeDefined();
+    expect(document.components?.securitySchemes?.bearer).toBeDefined();
     expect(operation?.summary).toContain('Log in');
     expect(operation?.security).toBeUndefined();
     expect(Object.keys(operation?.responses ?? {})).toEqual([

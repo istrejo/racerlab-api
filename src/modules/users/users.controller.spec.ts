@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UserRole } from '@prisma/client';
+import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
@@ -42,6 +46,16 @@ describe('UsersController', () => {
     }).compile();
 
     usersController = module.get<UsersController>(UsersController);
+  });
+
+  it('protects current users routes with JWT auth and the ADMIN role', () => {
+    expect(Reflect.getMetadata(GUARDS_METADATA, UsersController)).toEqual([
+      JwtAuthGuard,
+      RolesGuard,
+    ]);
+    expect(Reflect.getMetadata(ROLES_KEY, UsersController)).toEqual([
+      UserRole.ADMIN,
+    ]);
   });
 
   it('delegates user creation to the service', async () => {

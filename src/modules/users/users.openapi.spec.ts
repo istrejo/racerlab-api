@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { DocumentBuilder, OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
+import { OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
+import { createSwaggerDocumentBuilder } from '../../config/swagger.config';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 
@@ -34,7 +35,7 @@ describe('Users OpenAPI contract', () => {
 
     document = SwaggerModule.createDocument(
       app,
-      new DocumentBuilder().setTitle('RacerLab API').build(),
+      createSwaggerDocumentBuilder().build(),
     );
   });
 
@@ -49,7 +50,7 @@ describe('Users OpenAPI contract', () => {
     expect(document.paths['/users/{id}']?.patch).toBeDefined();
   });
 
-  it('discloses temporary bootstrap-only access without claiming current auth protection', () => {
+  it('declares Bearer auth for every protected users operation', () => {
     const operations = [
       document.paths['/users']?.post,
       document.paths['/users']?.get,
@@ -58,36 +59,25 @@ describe('Users OpenAPI contract', () => {
     ];
 
     for (const operation of operations) {
-      expect(operation?.summary).toContain('bootstrap');
-      expect(operation?.summary).toContain(
-        'temporary unauthenticated endpoint',
-      );
-      expect(operation?.description).toContain(
-        'Temporary bootstrap-only endpoint',
-      );
-      expect(operation?.description).toContain(
-        'JWT/Auth/RBAC protection is out of scope',
-      );
-      expect(operation?.description).toContain(
-        'must be added before production exposure',
-      );
-      expect(operation?.security).toBeUndefined();
+      expect(operation?.security).toEqual([{ bearer: [] }]);
     }
+
+    expect(document.components?.securitySchemes?.bearer).toBeDefined();
   });
 
   it('documents success and expected error responses for users endpoints', () => {
     expect(
       Object.keys(document.paths['/users']?.post?.responses ?? {}),
-    ).toEqual(['201', '400', '409', '503']);
+    ).toEqual(['201', '400', '401', '403', '409', '503']);
     expect(Object.keys(document.paths['/users']?.get?.responses ?? {})).toEqual(
-      ['200'],
+      ['200', '401', '403'],
     );
     expect(
       Object.keys(document.paths['/users/{id}']?.get?.responses ?? {}),
-    ).toEqual(['200', '400', '404']);
+    ).toEqual(['200', '400', '401', '403', '404']);
     expect(
       Object.keys(document.paths['/users/{id}']?.patch?.responses ?? {}),
-    ).toEqual(['200', '400', '404', '409', '503']);
+    ).toEqual(['200', '400', '401', '403', '404', '409', '503']);
   });
 
   it('documents an update schema without password fields', () => {

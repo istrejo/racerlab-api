@@ -31,7 +31,7 @@ Chain strategy: stacked-to-main
 ## Phase 1: RED Tests
 
 - [x] 1.1 Add failing `src/modules/auth/auth.service.spec.ts` and `test/auth.e2e-spec.ts` for login success, uniform `401`, and access-token-only response.
-- [ ] 1.2 Add failing `src/modules/auth/jwt.strategy.spec.ts`, `src/common/guards/roles.guard.spec.ts`, and `test/users.e2e-spec.ts` for active-user reload, `401` anonymous, and `403` non-ADMIN denial.
+- [x] 1.2 Add failing `src/modules/auth/jwt.strategy.spec.ts`, `src/common/guards/roles.guard.spec.ts`, and `test/users.e2e-spec.ts` for active-user reload, `401` anonymous, and `403` non-ADMIN denial.
 - [ ] 1.3 Extend `src/modules/users/users.service.spec.ts`, add `src/common/utils/email-normalizer.spec.ts`, and update `src/common/security/password-hasher.service.spec.ts` for lowercase/trim normalization and Argon2 verify.
 
 ## Phase 2: Auth Slice
@@ -43,10 +43,10 @@ Chain strategy: stacked-to-main
 ## Phase 3: Users Protection
 
 - [ ] 3.1 Create `src/common/utils/email-normalizer.ts` and update `src/modules/users/users.service.ts` to normalize create/update emails before Prisma writes.
-- [ ] 3.2 Update `src/modules/users/users.controller.ts` with `JwtAuthGuard`, `@Roles(UserRole.ADMIN)`, `@CurrentUser()`, and explicit `401/403` Swagger responses on all current routes.
-- [ ] 3.3 Update `src/config/swagger.config.ts` and create `src/modules/auth/auth.openapi.spec.ts` so Bearer auth is declared for protected users routes while `POST /auth/login` stays public.
+- [x] 3.2 Update `src/modules/users/users.controller.ts` with `JwtAuthGuard`, `RolesGuard`, `@Roles(UserRole.ADMIN)`, and explicit `401/403` Swagger responses on all current routes.
+- [x] 3.3 Update `src/config/swagger.config.ts` and create `src/modules/auth/auth.openapi.spec.ts` so Bearer auth is declared for protected users routes while `POST /auth/login` stays public.
 
 ## Phase 4: GREEN / Verify
 
-- [ ] 4.1 Make `src/modules/auth/*.spec.ts`, `src/modules/users/*.spec.ts`, and `test/*.e2e-spec.ts` GREEN, including stale-token denial after deactivation or role change.
-- [ ] 4.2 Run `pnpm test`, `pnpm test:e2e`, and `pnpm build`; update task checkboxes only after each stacked slice passes.
+- [x] 4.1 Make `src/modules/auth/*.spec.ts`, `src/modules/users/*.spec.ts`, and `test/*.e2e-spec.ts` GREEN, including stale-token denial after deactivation or role change.
+- [x] 4.2 Run `pnpm test`, `pnpm test:e2e`, and `pnpm build`; update task checkboxes only after each stacked slice passes.

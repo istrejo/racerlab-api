@@ -1,14 +1,14 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:ccf667afcfd5837d16a604524af1bbc40525b7f4748923b2b615bf9e7fa79b9c
-verdict: pass_with_warnings
+evidence_revision: sha256:989f008ab52df522afc3ad803bd4e1591c42f3cf7c371fff935bb81bc3cde69e
+verdict: pass
 blockers: 0
 critical_findings: 0
-requirements: 1/1
-scenarios: 2/2
-test_command: pnpm test
+requirements: 4/4
+scenarios: 4/9
+test_command: pnpm test -- --runTestsByPath src/modules/users/users.controller.spec.ts src/modules/users/users.openapi.spec.ts src/modules/auth/auth.openapi.spec.ts
 test_exit_code: 0
-test_output_hash: sha256:d9ccdce3ef200c68c33df54a84104945f8d14bcc884e1fc6da594c9a67fcaec1
+test_output_hash: sha256:0480af726ec6d0a525d4001f8967b0863ea812fb1f5d6718902cfc040e1f9a4f
 build_command: pnpm build
 build_exit_code: 0
 build_output_hash: sha256:ce0b8b56e01cdfaeb76197e9764cf9352f42bcfb742239accabc7acd8db53379
@@ -16,132 +16,131 @@ build_output_hash: sha256:ce0b8b56e01cdfaeb76197e9764cf9352f42bcfb742239accabc7a
 
 ## Verification Report
 
-**Change**: `protect-users-with-auth-rbac` — PR2 `jwt-revalidation` only  
+**Change**: `protect-users-with-auth-rbac` — PR3 `users-admin-rbac` rerun  
 **Version**: N/A  
 **Mode**: Strict TDD, hybrid persistence  
-**Scope**: Independent final verification of the current fixed/staged PR2 candidate. PR3 owns users-route protection, Swagger Bearer declarations, and guarded users-route E2E coverage.
+**Scope**: Re-ran strict verification for the PR3 slice after artifact-only remediation. Current runtime execution in this rerun covers focused PR3 unit/OpenAPI, focused PR3 e2e, coverage, lint, and build on the present workspace. Historical last-green full-suite hashes are preserved below because this rerun did not re-execute `pnpm test` / `pnpm test:e2e` / repository-wide coverage.
 
 ### Completeness
 
 | Metric | Value |
 |---|---:|
-| PR2 work-unit tasks | 2 |
-| PR2 work-unit tasks complete | 2 |
-| Whole-change task lines complete | 4/11 |
-| Whole-change task lines intentionally pending | 7 |
+| Requirements retrieved (full change) | 4 |
+| Scenarios retrieved (full change) | 9 |
+| PR3 scenarios verified in scope | 4 |
+| PR3 work-unit task lines | 4 |
+| PR3 work-unit task lines fully verified complete | 4 |
+| Whole-change task lines checked complete | 9/11 |
+| Whole-change task lines intentionally pending | 2 |
 
-PR2 tasks 2.2 and 2.3 are complete. The unchecked users-route portions of task 1.2 and phases 3–4 are intentionally PR3/later scope, so they do not fail this PR2-only gate.
+This rerun certifies the PR3 auth/RBAC slice only. The remaining unchecked whole-change work stays limited to email normalization (`1.3`, `3.1`), which remains outside PR3 and therefore keeps the full change from archive readiness.
 
 ### Build & Tests Execution
 
 | Command | Exit | Result | SHA-256 output hash |
 |---|---:|---|---|
-| `pnpm test -- --runTestsByPath src/modules/auth/jwt.strategy.spec.ts src/common/guards/roles.guard.spec.ts src/common/decorators/auth-request.decorators.spec.ts src/testing/focused-test-guard.spec.ts` | 0 | 4 suites, 27 tests passed | `94ab179cab534254e4e0217ca3a1daddc7dd99d62920a6baee2f516376c0d770` |
-| `pnpm test` | 0 | 15 suites, 72 tests passed; configured pretest guard executed | `d9ccdce3ef200c68c33df54a84104945f8d14bcc884e1fc6da594c9a67fcaec1` |
-| `pnpm test:e2e` | 0 | 3 suites, 19 tests passed; configured pretest:e2e guard executed | `7021bec0507ec3c9e562a3b8e35acc5d7bf4daf8a87c20c8731d47bbb82618a5` |
-| `pnpm lint` | 0 | Passed; no resulting source changes | `a95ffc959200be4d267e00ff8973d190d20928fce66201205949750c32481830` |
-| `pnpm build` | 0 | Passed | `ce0b8b56e01cdfaeb76197e9764cf9352f42bcfb742239accabc7acd8db53379` |
-| `pnpm test:cov` | 0 | 15 suites, 72 tests passed | `1f80cf695dbcc0bde522440cd2163f44c106b78175f734c7921b0819c50d3e10` |
+| `pnpm test -- --runTestsByPath src/modules/users/users.controller.spec.ts src/modules/users/users.openapi.spec.ts src/modules/auth/auth.openapi.spec.ts` | 0 | 3 suites, 12 tests passed | `sha256:0480af726ec6d0a525d4001f8967b0863ea812fb1f5d6718902cfc040e1f9a4f` |
+| `pnpm test:e2e -- --runTestsByPath test/users.e2e-spec.ts` | 0 | 1 suite, 21 tests passed | `sha256:a0411673799c9814f7e7f2c29612a38c9441a5c5c2301dbb92bd4a2b4287f832` |
+| `pnpm test:cov -- --runTestsByPath src/modules/users/users.controller.spec.ts src/modules/users/users.openapi.spec.ts src/modules/auth/auth.openapi.spec.ts` | 0 | 3 suites, 12 tests passed with coverage output | `sha256:50d8437dbf6bc7610b7305a253eed49e82004ca0a555d8281326203fbee55345` |
+| `pnpm lint` | 0 | Passed | `sha256:a95ffc959200be4d267e00ff8973d190d20928fce66201205949750c32481830` |
+| `pnpm build` | 0 | Passed | `sha256:ce0b8b56e01cdfaeb76197e9764cf9352f42bcfb742239accabc7acd8db53379` |
 
-The expected generic `JwtStrategy` dependency-error log is emitted by a passing failure-path test and contains no subject or dependency detail. The passing PR1 E2E dependency-failure test still prints its simulated `database offline` stack; that pre-existing AuthService behavior is outside PR2.
+Historical last-green full-suite evidence preserved from the prior successful strict verification on the same PR3 slice:
 
-### Spec Compliance Matrix — PR2 Scope
+| Historical command | Exit | SHA-256 output hash |
+|---|---:|---|
+| `pnpm test` | 0 | `sha256:67f727bcd337c4edb16ba5fd9db45db88827b5e4d013b43b7d839a3b783a72c7` |
+| `pnpm test:e2e` | 0 | `sha256:dbfcfd645f597d66ec4dae6d6117650694740c10220b68562a252d1eb7f18d34` |
+| `pnpm test:cov` | 0 | `sha256:6fd700cd1534262bc5623c1bca163ec28ba53884e1f6c033df5cb33a4560e95c` |
+
+### Spec Compliance Matrix — PR3 Scope
 
 | Requirement | Scenario | Runtime test | Result |
 |---|---|---|---|
-| Current User Revalidation | Accept token for a current active user | `jwt.strategy.spec.ts` reloads the stored user and returns the current database role | ✅ COMPLIANT |
-| Current User Revalidation | Reject stale claims after user state changes | `jwt.strategy.spec.ts` rejects deleted/inactive users and ignores a stale token role | ✅ COMPLIANT |
+| ADMIN-Only Users Endpoints | Allow an authenticated ADMIN request | `test/users.e2e-spec.ts` exercises `POST /users`, `GET /users`, `GET /users/:id`, and `PATCH /users/:id` with an ADMIN JWT and gets `201/200` success | ✅ COMPLIANT |
+| ADMIN-Only Users Endpoints | Block anonymous or non-ADMIN access | `test/users.e2e-spec.ts` exercises the same four routes anonymously (`401`) and as a MANAGER (`403`) | ✅ COMPLIANT |
+| Swagger Bearer Contract | Protected users route is documented with Bearer auth | `src/modules/users/users.openapi.spec.ts` asserts Bearer security on all four users operations and on the shared `bearer` scheme | ✅ COMPLIANT |
+| Swagger Bearer Contract | Login route remains the public auth entry point | `src/modules/auth/auth.openapi.spec.ts` asserts `POST /auth/login` has no operation security while the global Bearer scheme still exists | ✅ COMPLIANT |
 
-**Compliance summary**: 2/2 scenarios for the single PR2 requirement are compliant. The retrieved full change contains 4 requirements and 9 scenarios; the remaining 3 requirements/7 scenarios are PR1 or PR3 scope and are not certified here.
-
-### PR2 Acceptance and Correction Evidence
-
-| Criterion | Result | Evidence |
-|---|---|---|
-| Database-backed active-user reload | ✅ COMPLIANT | Prisma lookup uses validated `sub`, includes role, and returns current DB state. |
-| Stale role claims cannot authorize | ✅ COMPLIANT | Runtime test supplies stale `ADMIN` and receives current `MANAGER`. |
-| Deleted/inactive users return 401 | ✅ COMPLIANT | Parameterized runtime cases assert `UnauthorizedException`. |
-| Invalid `sub` is rejected before Prisma | ✅ COMPLIANT | Missing, empty, non-string, and malformed UUID cases assert 401 and zero Prisma calls. |
-| Prisma failure degrades safely | ✅ COMPLIANT | Runtime test asserts generic 503 and generic log with no token subject/error detail. |
-| Shared JWT/RBAC plumbing | ✅ COMPLIANT | `JwtAuthGuard`, `RolesGuard`, `@Roles`, and `@CurrentUser` exist, are wired, and have passing focused tests. |
-| Focused-test guard blocks `.only` variants | ✅ COMPLIANT | Passing guard cases cover `it.only`, `describe.only`, `test.only`, `.only.each`, and `.concurrent.only`. |
-| Focused-test guard blocks Jest aliases | ✅ COMPLIANT | Passing runtime cases cover `fit`, `fdescribe`, and `fit.each`; comments/strings remain allowed. |
-| Users routes remain unprotected until PR3 | ✅ COMPLIANT | `UsersController` has no auth/role decorators and retains temporary bootstrap-public documentation. |
-| PR1 regression safety | ✅ COMPLIANT | Full unit and E2E suites pass. |
+**Compliance summary**: 4/4 PR3 scenarios are compliant. Across the retrieved full change there are 4 requirements and 9 scenarios total; the non-PR3 `Normalize email identity consistently` scenario remains pending and is not certified by this slice.
 
 ### Correctness (Static Evidence)
 
 | Area | Status | Notes |
 |---|---|---|
-| JWT subject validation | ✅ Implemented | UUID validation precedes Prisma access. |
-| Failure classification | ✅ Implemented | State failures remain 401; dependency failures become controlled 503. |
-| Authorization source | ✅ Implemented | Current database role and active state populate `request.user`. |
-| Focused-test enforcement | ✅ Implemented | Both `pretest` and `pretest:e2e` scan `src` and `test`. |
-| Slice boundary | ✅ Preserved | No users-route protection, Swagger security, refresh/logout/me, schema, or migration work was added. |
+| Users controller protection | ✅ Implemented | `UsersController` applies `JwtAuthGuard`, `RolesGuard`, and `@Roles(UserRole.ADMIN)` at class scope. |
+| Anonymous / non-ADMIN denial matrix | ✅ Implemented | Current focused e2e covers `401` and `403` outcomes for every current users endpoint. |
+| ADMIN success path | ✅ Implemented | Current focused e2e covers all four users endpoints with successful ADMIN access and preserved validation/conflict/not-found cases. |
+| Swagger global Bearer contract | ✅ Implemented | Shared `createSwaggerDocumentBuilder()` exposes the `bearer` security scheme for runtime docs and tests. |
+| Public login boundary | ✅ Preserved | `AuthController` exposes only `POST /auth/login`; OpenAPI remains public for that operation. |
+| Artifact wording alignment | ✅ Implemented | `tasks.md`, `design.md`, and `apply-progress.md` no longer claim that `UsersController` uses `@CurrentUser()`. |
+| Email normalization follow-up scope | ⚠️ Deferred | `tasks.md` and `apply-progress.md` still mark `1.3` and `3.1` as pending outside PR3. |
 
 ### Coherence (Design)
 
 | Decision | Followed? | Notes |
 |---|---|---|
-| JWT carries `sub`; database reload authorizes | ✅ Yes | Token role claims are ignored for authorization. |
-| Enum-role RBAC | ✅ Yes | Decorator and guard use Prisma `UserRole`. |
-| Reusable shared guards/decorators | ✅ Yes | AuthModule registers and exports the guards for PR3. |
-| Chained delivery boundary | ✅ Yes | Users endpoints intentionally remain PR3 scope. |
+| Users routes become ADMIN-only via shared JWT/RBAC guards | ✅ Yes | Controller-level guards and role metadata match the design intent. |
+| Swagger publishes a reusable Bearer scheme | ✅ Yes | Runtime docs and OpenAPI tests use the same builder. |
+| `POST /auth/login` remains public | ✅ Yes | Auth OpenAPI contract keeps operation security undefined for login. |
+| PR3 artifacts describe implemented controller protection only | ✅ Yes | `@CurrentUser()` is still documented as a reusable decorator, but not as a `UsersController` mechanism. |
+| Shared lowercase email normalization across login/create/update | ⚠️ Deferred | Still pending in tasks `1.3` and `3.1`; outside PR3 scope but still part of the full change design. |
 
 ### TDD Compliance
 
 | Check | Result | Details |
 |---|---|---|
-| TDD evidence reported | ✅ | Apply-progress records PR2 baseline, RED, GREEN, triangulation, and correction evidence. |
-| Reported test files exist | ✅ | Strategy, roles guard, decorator, and focused-test guard specs exist. |
-| GREEN reconfirmed | ✅ | 4/4 focused suites and 27/27 tests pass. |
-| Triangulation adequate | ✅ | Active/deleted/inactive users, four invalid subjects, dependency failure, RBAC outcomes, decorators, and focused aliases vary behavior. |
-| Safety net reported | ✅ | Apply-progress preserves focused baselines and full regression evidence. |
+| TDD evidence reported | ✅ | `apply-progress.md` contains PR3 rows for `1.2`, `3.2`, `3.3`, `4.1`, and `4.2`. |
+| All relevant test files exist | ✅ | `users.controller.spec.ts`, `users.openapi.spec.ts`, `auth.openapi.spec.ts`, and `users.e2e-spec.ts` exist. |
+| RED confirmed from preserved lineage | ✅ | Apply-progress preserves pre-change failing focused evidence for controller/OpenAPI/users-route denial expectations. |
+| GREEN reconfirmed by current execution | ✅ | Current focused unit/OpenAPI, focused e2e, coverage, lint, and build are all green. |
+| Triangulation adequate | ✅ | PR3 covers anonymous denial, non-ADMIN denial, ADMIN success, and protected/public OpenAPI variance. |
+| Safety net for modified files | ✅ | Apply-progress preserves baseline focused checks before the PR3 implementation change. |
 
-**TDD compliance**: 5/5 checks passed.
+**TDD compliance**: 6/6 checks passed.
 
 ### Test Layer Distribution
 
 | Layer | Tests | Files | Tool |
 |---|---:|---:|---|
-| PR2 focused unit | 27 | 4 | Jest |
-| Full E2E regression | 19 | 3 | Jest + Supertest |
-
-No guarded-route PR2 E2E exists because PR2 intentionally attaches no guard to a users route; runtime route composition belongs to PR3.
+| Unit | 5 | 1 | Jest |
+| Integration/OpenAPI | 7 | 2 | Jest + Nest Swagger document generation |
+| E2E | 21 | 1 | Jest + Supertest |
+| **Total** | **33** | **4** | |
 
 ### Changed File Coverage
 
 | File | Lines | Branches | Uncovered lines | Rating |
 |---|---:|---:|---|---|
-| `src/modules/auth/jwt.strategy.ts` | 100% | 92.85% | — | ✅ Excellent |
-| `src/common/guards/roles.guard.ts` | 100% | 83.33% | — | ✅ Excellent |
-| `src/common/guards/jwt-auth.guard.ts` | 100% | 100% | — | ✅ Excellent |
-| `src/common/decorators/current-user.decorator.ts` | 100% | 100% | — | ✅ Excellent |
-| `src/common/decorators/roles.decorator.ts` | 100% | 100% | — | ✅ Excellent |
-| `src/modules/auth/auth.module.ts` | 85.71% | 100% | 19–21 | ⚠️ Acceptable |
-| `src/testing/focused-test-guard.ts` | 74.6% | 58.97% | 61–75, 87–92, 130 | ⚠️ Low |
+| `src/modules/users/users.controller.ts` | 100% | 75% | — | ✅ Excellent |
+| `src/config/swagger.config.ts` | 57.14% | 100% | 23-27 | ⚠️ Low |
 
-Repository coverage is 90.32% lines and 76.3% branches. Interface-only `authenticated-user.ts` has no runtime statements.
+**Average changed file coverage**: 78.57% lines.
 
 ### Assertion Quality
 
-**Assertion quality**: ✅ PR2 tests invoke production behavior and verify meaningful values or denial outcomes. The tautology text at `focused-test-guard.spec.ts:12` is fixture content written to a sandbox to test scanning, not the test's assertion.
+**Assertion quality**: ✅ All PR3 verification tests invoke controller metadata, generated OpenAPI output, or HTTP behavior and assert meaningful authorization/contract outcomes.
 
 ### Quality Metrics
 
 **Linter**: ✅ No errors  
 **Type/build check**: ✅ `pnpm build` passed
 
+### Canonical Verification Evidence
+
+```json
+{"change":"protect-users-with-auth-rbac","scope":"PR3 users-admin-rbac rerun","strict_tdd":true,"artifact_alignment":{"users_controller_current_user_claim_removed":true,"email_normalization_pending_outside_pr3":true},"current":{"focused_unit":{"command":"pnpm test -- --runTestsByPath src/modules/users/users.controller.spec.ts src/modules/users/users.openapi.spec.ts src/modules/auth/auth.openapi.spec.ts","exit_code":0,"output_hash":"sha256:0480af726ec6d0a525d4001f8967b0863ea812fb1f5d6718902cfc040e1f9a4f"},"focused_e2e":{"command":"pnpm test:e2e -- --runTestsByPath test/users.e2e-spec.ts","exit_code":0,"output_hash":"sha256:a0411673799c9814f7e7f2c29612a38c9441a5c5c2301dbb92bd4a2b4287f832"},"coverage":{"command":"pnpm test:cov -- --runTestsByPath src/modules/users/users.controller.spec.ts src/modules/users/users.openapi.spec.ts src/modules/auth/auth.openapi.spec.ts","exit_code":0,"output_hash":"sha256:50d8437dbf6bc7610b7305a253eed49e82004ca0a555d8281326203fbee55345"},"lint":{"command":"pnpm lint","exit_code":0,"output_hash":"sha256:a95ffc959200be4d267e00ff8973d190d20928fce66201205949750c32481830"},"build":{"command":"pnpm build","exit_code":0,"output_hash":"sha256:ce0b8b56e01cdfaeb76197e9764cf9352f42bcfb742239accabc7acd8db53379"}},"historical_full_last_green":{"test":{"command":"pnpm test","exit_code":0,"output_hash":"sha256:67f727bcd337c4edb16ba5fd9db45db88827b5e4d013b43b7d839a3b783a72c7"},"test_e2e":{"command":"pnpm test:e2e","exit_code":0,"output_hash":"sha256:dbfcfd645f597d66ec4dae6d6117650694740c10220b68562a252d1eb7f18d34"},"coverage":{"command":"pnpm test:cov","exit_code":0,"output_hash":"sha256:6fd700cd1534262bc5623c1bca163ec28ba53884e1f6c033df5cb33a4560e95c"}}}
+```
+
 ### Issues Found
 
-**CRITICAL**: None.
-
 **WARNING**:
-1. The overall SDD change remains incomplete by design: 7/11 task lines are pending for PR3/later; this report certifies PR2 only.
-2. `src/testing/focused-test-guard.ts` remains below 80% changed-file coverage (74.6% lines, 58.97% branches). This is informational under strict verification and does not negate the runtime alias cases.
+1. The full change still has pending non-PR3 follow-up work for shared email normalization (`1.3`, `3.1`), so the change is not archive-ready even though the requested PR3 behavior is green.
+2. `src/config/swagger.config.ts` remains below the 80% changed-file coverage threshold (57.14% lines). This is informational only because runtime OpenAPI checks passed.
 
-**SUGGESTION**: PR3 should add real HTTP tests for Passport JWT invocation and ADMIN/non-ADMIN users-route authorization.
+**SUGGESTION**:
+1. Finish the deferred email-normalization work so the full change can satisfy the `Normalize email identity consistently` scenario and close the remaining 2 unchecked task lines.
 
 ### Verdict
 
-**PASS WITH WARNINGS — PR2 scope only.** The current candidate satisfies original PR2 criteria and both correction areas, including runtime blocking of `.only`, `fit`, `fdescribe`, and `fit.each`. All requested focused/full commands pass. Public users routes are an intentional PR3 boundary, not a PR2 failure.
+**PASS — PR3 strict SDD slice.** The requested PR3 runtime behavior, Swagger contract, and artifact wording are aligned on the current workspace. The full change still remains outside archive readiness because the deferred email-normalization follow-up (`1.3`, `3.1`) is intentionally pending beyond PR3.

@@ -6,32 +6,47 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiServiceUnavailableResponse,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { UsersService } from './users.service';
 
 @ApiTags('users')
+@ApiBearerAuth('bearer')
+@ApiUnauthorizedResponse({ description: 'Authentication is required.' })
+@ApiForbiddenResponse({
+  description: 'Only ADMIN users can access this route.',
+})
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
   @ApiOperation({
-    summary: 'Create a bootstrap user (temporary unauthenticated endpoint)',
+    summary: 'Create a user',
     description:
-      'Temporary bootstrap-only endpoint. JWT/Auth/RBAC protection is out of scope for this change and must be added before production exposure.',
+      'Creates an internal user. Access is restricted to authenticated ADMIN users.',
   })
   @ApiCreatedResponse({ type: UserResponseDto })
   @ApiBadRequestResponse({ description: 'Invalid create-user payload.' })
@@ -47,9 +62,9 @@ export class UsersController {
 
   @Get()
   @ApiOperation({
-    summary: 'List bootstrap users (temporary unauthenticated endpoint)',
+    summary: 'List users',
     description:
-      'Temporary bootstrap-only endpoint. JWT/Auth/RBAC protection is out of scope for this change and must be added before production exposure.',
+      'Lists internal users. Access is restricted to authenticated ADMIN users.',
   })
   @ApiOkResponse({ type: UserResponseDto, isArray: true })
   findAll(): Promise<UserResponseDto[]> {
@@ -58,9 +73,9 @@ export class UsersController {
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Get a bootstrap user by id (temporary unauthenticated endpoint)',
+    summary: 'Get a user by id',
     description:
-      'Temporary bootstrap-only endpoint. JWT/Auth/RBAC protection is out of scope for this change and must be added before production exposure.',
+      'Returns a single internal user. Access is restricted to authenticated ADMIN users.',
   })
   @ApiOkResponse({ type: UserResponseDto })
   @ApiBadRequestResponse({ description: 'Invalid user id.' })
@@ -71,9 +86,9 @@ export class UsersController {
 
   @Patch(':id')
   @ApiOperation({
-    summary: 'Update a bootstrap user (temporary unauthenticated endpoint)',
+    summary: 'Update a user',
     description:
-      'Temporary bootstrap-only endpoint. JWT/Auth/RBAC protection is out of scope for this change and must be added before production exposure. Password updates are intentionally excluded from this bootstrap flow.',
+      'Updates an internal user. Access is restricted to authenticated ADMIN users. Password updates are intentionally excluded from this flow.',
   })
   @ApiOkResponse({ type: UserResponseDto })
   @ApiBadRequestResponse({ description: 'Invalid user id or update payload.' })

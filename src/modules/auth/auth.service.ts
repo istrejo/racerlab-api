@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { PasswordHasherService } from '../../common/security/password-hasher.service';
+import { normalizeEmail } from '../../common/utils/email-normalizer';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -22,11 +23,8 @@ export class AuthService {
 
   async login(dto: LoginDto): Promise<LoginResponseDto> {
     try {
-      const normalizedEmail = this.normalizeEmail(dto.email);
-      const user = await this.prisma.user.findUnique({
-        where: { email: normalizedEmail },
-        include: { role: true },
-      });
+      const normalizedEmail = normalizeEmail(dto.email);
+      const user = await this.findUserForLogin(normalizedEmail);
 
       if (!user || !user.isActive) {
         throw new UnauthorizedException('Invalid credentials.');
@@ -63,7 +61,48 @@ export class AuthService {
     }
   }
 
-  private normalizeEmail(email: string): string {
-    return email.trim().toLowerCase();
+  private async findUserForLogin(normalizedEmail: string) {
+    const exactMatch = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { role: true },
+    });
+
+    if (exactMatch) {
+      const duplicateMatches = await this.prisma.user.findMany({
+        where: {
+          email: {
+            equals: normalizedEmail,
+            mode: 'insensitive',
+          },
+        },
+        include: { role: true },
+        orderBy: [{ email: 'asc' }, { id: 'asc' }],
+        take: 2,
+      });
+
+      if (duplicateMatches.length !== 1) {
+        return null;
+      }
+
+      return exactMatch;
+    }
+
+    const compatibilityMatches = await this.prisma.user.findMany({
+      where: {
+        email: {
+          equals: normalizedEmail,
+          mode: 'insensitive',
+        },
+      },
+      include: { role: true },
+      orderBy: [{ email: 'asc' }, { id: 'asc' }],
+      take: 2,
+    });
+
+    if (compatibilityMatches.length !== 1) {
+      return null;
+    }
+
+    return compatibilityMatches[0];
   }
 }

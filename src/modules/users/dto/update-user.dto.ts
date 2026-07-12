@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import {
@@ -18,6 +19,9 @@ export class UpdateUserDto {
 
   @ApiPropertyOptional({ example: 'ada@example.com' })
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsEmail()
   email?: string;
 

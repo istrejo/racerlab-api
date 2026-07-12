@@ -18,6 +18,7 @@ describe('UsersController (e2e)', () => {
     role: { findUnique: jest.Mock };
     user: {
       create: jest.Mock;
+      findFirst: jest.Mock;
       findMany: jest.Mock;
       findUnique: jest.Mock;
       update: jest.Mock;
@@ -50,6 +51,7 @@ describe('UsersController (e2e)', () => {
       role: { findUnique: jest.fn().mockResolvedValue({ id: 'role-1' }) },
       user: {
         create: jest.fn().mockResolvedValue(user),
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([user]),
         findUnique: jest.fn().mockResolvedValue(user),
         update: jest.fn().mockResolvedValue({
@@ -173,7 +175,7 @@ describe('UsersController (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
         name: 'Ada Lovelace',
-        email: 'ada@example.com',
+        email: '  ADA@EXAMPLE.COM  ',
         password: 'super-secret',
         role: UserRole.ADMIN,
       })
@@ -190,6 +192,16 @@ describe('UsersController (e2e)', () => {
     });
     expect(response.body).not.toHaveProperty('passwordHash');
     expect(response.body).not.toHaveProperty('roleId');
+    expect(prisma.user.create).toHaveBeenCalledWith({
+      data: {
+        name: 'Ada Lovelace',
+        email: 'ada@example.com',
+        passwordHash: 'hashed-password',
+        roleId: 'role-1',
+        isActive: true,
+      },
+      include: { role: true },
+    });
   });
 
   it('GET /users allows an authenticated ADMIN request and returns sanitized user responses', async () => {
@@ -240,7 +252,7 @@ describe('UsersController (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .send({
         name: 'Grace Hopper',
-        email: 'grace@example.com',
+        email: '  GRACE@EXAMPLE.COM  ',
         role: UserRole.MANAGER,
         isActive: false,
       })
@@ -257,6 +269,16 @@ describe('UsersController (e2e)', () => {
     });
     expect(response.body).not.toHaveProperty('passwordHash');
     expect(response.body).not.toHaveProperty('roleId');
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: user.id },
+      data: {
+        name: 'Grace Hopper',
+        email: 'grace@example.com',
+        roleId: 'role-1',
+        isActive: false,
+      },
+      include: { role: true },
+    });
   });
 
   it('POST /users rejects invalid bodies', async () => {
@@ -326,6 +348,24 @@ describe('UsersController (e2e)', () => {
       .expect(409);
   });
 
+  it('POST /users rejects a legacy mixed-case duplicate before write', async () => {
+    prisma.user.findFirst.mockResolvedValueOnce({ id: 'legacy-user' });
+    const authorization = await createAdminAuthorizationHeader();
+
+    await request(app.getHttpServer())
+      .post('/users')
+      .set('Authorization', authorization)
+      .send({
+        name: 'Ada Lovelace',
+        email: 'ada@example.com',
+        password: 'super-secret',
+        role: UserRole.ADMIN,
+      })
+      .expect(409);
+
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
   it('GET /users/:id returns not found for a missing user', async () => {
     prisma.user.findUnique
       .mockResolvedValueOnce(user)
@@ -347,6 +387,19 @@ describe('UsersController (e2e)', () => {
       .set('Authorization', authorization)
       .send({ email: 'grace@example.com' })
       .expect(409);
+  });
+
+  it('PATCH /users/:id rejects a legacy mixed-case duplicate before write', async () => {
+    prisma.user.findFirst.mockResolvedValueOnce({ id: 'legacy-user' });
+    const authorization = await createAdminAuthorizationHeader();
+
+    await request(app.getHttpServer())
+      .patch(`/users/${user.id}`)
+      .set('Authorization', authorization)
+      .send({ email: 'GRACE@example.com' })
+      .expect(409);
+
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   it('PATCH /users/:id returns not found for a missing user', async () => {

@@ -13,6 +13,7 @@ describe('UsersService', () => {
     role: { findUnique: jest.Mock };
     user: {
       create: jest.Mock;
+      findFirst: jest.Mock;
       findMany: jest.Mock;
       findUnique: jest.Mock;
       update: jest.Mock;
@@ -40,6 +41,7 @@ describe('UsersService', () => {
       role: { findUnique: jest.fn() },
       user: {
         create: jest.fn(),
+        findFirst: jest.fn(),
         findMany: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
@@ -60,7 +62,7 @@ describe('UsersService', () => {
     await expect(
       service.create({
         name: 'Ada Lovelace',
-        email: 'ada@example.com',
+        email: '  ADA@EXAMPLE.COM  ',
         password: 'super-secret',
         role: UserRole.ADMIN,
       }),
@@ -100,6 +102,35 @@ describe('UsersService', () => {
         role: UserRole.MANAGER,
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('rejects create when another row already uses the email with different casing', async () => {
+    prisma.role.findUnique.mockResolvedValue({ id: 'role-1' });
+    prisma.user.findFirst.mockResolvedValue({
+      id: 'legacy-user',
+      email: 'Ada@Example.com',
+    });
+
+    await expect(
+      service.create({
+        name: 'Grace Hopper',
+        email: 'ada@example.com',
+        password: 'super-secret',
+        role: UserRole.MANAGER,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({
+      where: {
+        email: {
+          equals: 'ada@example.com',
+          mode: 'insensitive',
+        },
+      },
+      select: { id: true },
+    });
+    expect(passwordHasher.hash).not.toHaveBeenCalled();
+    expect(prisma.user.create).not.toHaveBeenCalled();
   });
 
   it('fails explicitly when the requested bootstrap role is missing', async () => {
@@ -172,7 +203,7 @@ describe('UsersService', () => {
     await expect(
       service.update(storedUser.id, {
         name: 'Grace Hopper',
-        email: 'grace@example.com',
+        email: '  GRACE@EXAMPLE.COM  ',
         role: UserRole.MANAGER,
         isActive: false,
       }),
@@ -239,6 +270,65 @@ describe('UsersService', () => {
         email: 'ada@example.com',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('rejects update when another row already uses the email with different casing', async () => {
+    prisma.user.findFirst.mockResolvedValue({ id: 'legacy-user' });
+
+    await expect(
+      service.update(storedUser.id, {
+        email: 'ADA@example.com',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({
+      where: {
+        email: {
+          equals: 'ada@example.com',
+          mode: 'insensitive',
+        },
+        NOT: { id: storedUser.id },
+      },
+      select: { id: true },
+    });
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('allows update when the matching case-insensitive email belongs to the same user id', async () => {
+    prisma.user.findFirst.mockResolvedValue(null);
+    prisma.user.update.mockResolvedValue(storedUser);
+
+    await expect(
+      service.update(storedUser.id, {
+        email: 'ADA@example.com',
+      }),
+    ).resolves.toEqual({
+      id: storedUser.id,
+      name: storedUser.name,
+      email: storedUser.email,
+      role: UserRole.ADMIN,
+      isActive: true,
+      createdAt,
+      updatedAt,
+    });
+
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({
+      where: {
+        email: {
+          equals: 'ada@example.com',
+          mode: 'insensitive',
+        },
+        NOT: { id: storedUser.id },
+      },
+      select: { id: true },
+    });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: storedUser.id },
+      data: {
+        email: 'ada@example.com',
+      },
+      include: { role: true },
+    });
   });
 
   it('throws not found when updating a missing user', async () => {

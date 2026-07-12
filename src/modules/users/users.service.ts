@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Role, User } from '@prisma/client';
 import { PasswordHasherService } from '../../common/security/password-hasher.service';
+import { normalizeEmail } from '../../common/utils/email-normalizer';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -21,6 +22,7 @@ export class UsersService {
   ) {}
 
   async create(dto: CreateUserDto): Promise<UserResponseDto> {
+    const normalizedEmail = normalizeEmail(dto.email);
     const role = await this.prisma.role.findUnique({
       where: { name: dto.role },
     });
@@ -31,13 +33,15 @@ export class UsersService {
       );
     }
 
+    await this.ensureEmailIsAvailable(normalizedEmail);
+
     const passwordHash = await this.passwordHasher.hash(dto.password);
 
     try {
       const user = await this.prisma.user.create({
         data: {
           name: dto.name,
-          email: dto.email,
+          email: normalizedEmail,
           passwordHash,
           roleId: role.id,
           isActive: dto.isActive ?? true,
@@ -78,6 +82,7 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<UserResponseDto> {
+    const normalizedEmail = dto.email ? normalizeEmail(dto.email) : undefined;
     const data: {
       name?: string;
       email?: string;
@@ -85,7 +90,7 @@ export class UsersService {
       isActive?: boolean;
     } = {
       name: dto.name,
-      email: dto.email,
+      email: normalizedEmail,
       isActive: dto.isActive,
     };
 
@@ -101,6 +106,10 @@ export class UsersService {
       }
 
       data.roleId = role.id;
+    }
+
+    if (normalizedEmail) {
+      await this.ensureEmailIsAvailable(normalizedEmail, id);
     }
 
     try {
@@ -134,6 +143,26 @@ export class UsersService {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
+  }
+
+  private async ensureEmailIsAvailable(
+    email: string,
+    excludeUserId?: string,
+  ): Promise<void> {
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        email: {
+          equals: email,
+          mode: 'insensitive',
+        },
+        ...(excludeUserId ? { NOT: { id: excludeUserId } } : {}),
+      },
+      select: { id: true },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('A user with this email already exists.');
+    }
   }
 
   private isUniqueConstraintError(error: unknown): boolean {

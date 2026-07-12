@@ -32,7 +32,7 @@ Chain strategy: stacked-to-main
 
 - [x] 1.1 Add failing `src/modules/auth/auth.service.spec.ts` and `test/auth.e2e-spec.ts` for login success, uniform `401`, and access-token-only response.
 - [x] 1.2 Add failing `src/modules/auth/jwt.strategy.spec.ts`, `src/common/guards/roles.guard.spec.ts`, and `test/users.e2e-spec.ts` for active-user reload, `401` anonymous, and `403` non-ADMIN denial.
-- [ ] 1.3 Extend `src/modules/users/users.service.spec.ts`, add `src/common/utils/email-normalizer.spec.ts`, and update `src/common/security/password-hasher.service.spec.ts` for lowercase/trim normalization and Argon2 verify.
+- [x] 1.3 Extend `src/modules/users/users.service.spec.ts`, add `src/common/utils/email-normalizer.spec.ts`, and update `src/common/security/password-hasher.service.spec.ts` for lowercase/trim normalization and Argon2 verify.
 
 ## Phase 2: Auth Slice
 
@@ -42,7 +42,7 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Users Protection
 
-- [ ] 3.1 Create `src/common/utils/email-normalizer.ts` and update `src/modules/users/users.service.ts` to normalize create/update emails before Prisma writes.
+- [x] 3.1 Create `src/common/utils/email-normalizer.ts` and update `src/modules/users/users.service.ts` to normalize create/update emails before Prisma writes.
 - [x] 3.2 Update `src/modules/users/users.controller.ts` with `JwtAuthGuard`, `RolesGuard`, `@Roles(UserRole.ADMIN)`, and explicit `401/403` Swagger responses on all current routes.
 - [x] 3.3 Update `src/config/swagger.config.ts` and create `src/modules/auth/auth.openapi.spec.ts` so Bearer auth is declared for protected users routes while `POST /auth/login` stays public.
 

@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import {
@@ -16,6 +17,9 @@ export class CreateUserDto {
   name!: string;
 
   @ApiProperty({ example: 'ada@example.com' })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsEmail()
   email!: string;
 

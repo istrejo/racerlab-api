@@ -4,11 +4,15 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { PrismaService } from './../src/prisma/prisma.service';
+import { applyJwtTestEnv } from '../src/testing/jwt-test-env';
 
 describe('HealthController (e2e)', () => {
   let app: INestApplication<App>;
+  let restoreJwtTestEnv: (() => void) | undefined;
 
   beforeEach(async () => {
+    restoreJwtTestEnv = applyJwtTestEnv();
+
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -30,6 +34,11 @@ describe('HealthController (e2e)', () => {
   });
 
   afterEach(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
+
+    restoreJwtTestEnv?.();
+    restoreJwtTestEnv = undefined;
   });
 });

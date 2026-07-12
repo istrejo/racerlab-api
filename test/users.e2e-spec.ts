@@ -7,9 +7,11 @@ import { PasswordHasherService } from '../src/common/security/password-hasher.se
 import { configureValidation } from '../src/main';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { applyJwtTestEnv } from '../src/testing/jwt-test-env';
 
 describe('UsersController (e2e)', () => {
   let app: INestApplication<App>;
+  let restoreJwtTestEnv: (() => void) | undefined;
   let prisma: {
     role: { findUnique: jest.Mock };
     user: {
@@ -36,6 +38,8 @@ describe('UsersController (e2e)', () => {
   };
 
   beforeEach(async () => {
+    restoreJwtTestEnv = applyJwtTestEnv();
+
     prisma = {
       role: { findUnique: jest.fn().mockResolvedValue({ id: 'role-1' }) },
       user: {
@@ -68,7 +72,12 @@ describe('UsersController (e2e)', () => {
   });
 
   afterEach(async () => {
-    await app.close();
+    if (app) {
+      await app.close();
+    }
+
+    restoreJwtTestEnv?.();
+    restoreJwtTestEnv = undefined;
   });
 
   it('POST /users creates a sanitized user response', async () => {

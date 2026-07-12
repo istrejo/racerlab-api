@@ -16,10 +16,12 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "pretest": "node -r ts-node/register ./src/testing/focused-test-guard.ts ./src ./test",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "pretest:e2e": "node -r ts-node/register ./src/testing/focused-test-guard.ts ./src ./test",
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "prisma": {
@@ -28,6 +30,7 @@
   "dependencies": {
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
+    "@nestjs/jwt": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.4.5",
     "@prisma/client": "^6.19.2",

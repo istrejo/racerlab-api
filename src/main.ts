@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { setupSwagger } from './config/swagger.config';
 
@@ -14,6 +15,7 @@ export function configureValidation(app: INestApplication): void {
 }
 
 export function configureApp(app: INestApplication): void {
+  app.use(cookieParser());
   configureValidation(app);
   setupSwagger(app);
 }

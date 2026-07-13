@@ -33,10 +33,10 @@ Chain strategy: stacked-to-main
 
 ## Phase 2: Login and Refresh Core
 
-- [ ] 2.1 RED: add failing service tests for login cookie issuance, generic invalid refresh rejection, rotation, and replay-family revocation in `src/modules/auth/auth.service.spec.ts`.
-- [ ] 2.2 GREEN: implement refresh token generation/hash/session persistence in `src/modules/auth/auth-session.service.ts` and transactional rotate-or-revoke logic in `src/modules/auth/auth.service.ts`.
-- [ ] 2.3 RED: add e2e coverage in `test/auth.e2e-spec.ts` for `POST /auth/login` cookie issuance, `POST /auth/refresh`, generic `401`, and concurrent-session independence.
-- [ ] 2.4 GREEN: update `src/modules/auth/auth.controller.ts`, `src/modules/auth/auth.module.ts`, `src/modules/auth/dto/login-response.dto.ts`, and create `src/modules/auth/dto/refresh-response.dto.ts`.
+- [x] 2.1 RED: add failing service tests for login cookie issuance, generic invalid refresh rejection, rotation, and replay-family revocation in `src/modules/auth/auth.service.spec.ts`.
+- [x] 2.2 GREEN: implement refresh token generation/hash/session persistence in `src/modules/auth/auth-session.service.ts` and transactional rotate-or-revoke logic in `src/modules/auth/auth.service.ts`.
+- [x] 2.3 RED: add e2e coverage in `test/auth.e2e-spec.ts` for `POST /auth/login` cookie issuance, `POST /auth/refresh`, generic `401`, and concurrent-session independence.
+- [x] 2.4 GREEN: update `src/modules/auth/auth.controller.ts`, `src/modules/auth/auth.module.ts`, `src/modules/auth/dto/login-response.dto.ts`, and create `src/modules/auth/dto/refresh-response.dto.ts`.
 
 ## Phase 3: Revocation and Contract Wiring
 

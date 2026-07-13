@@ -6,6 +6,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { PasswordHasherService } from '../../common/security/password-hasher.service';
 import { getAuthConfig } from '../../config/auth.config';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { AuthSessionService } from './auth-session.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
@@ -30,6 +31,7 @@ import { JwtStrategy } from './jwt.strategy';
   controllers: [AuthController],
   providers: [
     AuthService,
+    AuthSessionService,
     JwtStrategy,
     JwtAuthGuard,
     RolesGuard,

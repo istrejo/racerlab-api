@@ -28,12 +28,14 @@ describe('configureValidation', () => {
 describe('configureApp', () => {
   it('registers cookie parsing before Swagger so auth cookies are available to routes', () => {
     const app = {
+      setGlobalPrefix: jest.fn(),
       use: jest.fn(),
       useGlobalPipes: jest.fn(),
     };
 
     configureApp(app as never);
 
+    expect(app.setGlobalPrefix).toHaveBeenCalledWith('api');
     expect(app.use).toHaveBeenCalledTimes(1);
 
     const [middleware] = app.use.mock.calls[0] as [(...args: unknown[]) => unknown];

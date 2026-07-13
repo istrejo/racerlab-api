@@ -15,6 +15,7 @@ export function configureValidation(app: INestApplication): void {
 }
 
 export function configureApp(app: INestApplication): void {
+  app.setGlobalPrefix('api');
   app.use(cookieParser());
   configureValidation(app);
   setupSwagger(app);

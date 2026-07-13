@@ -13,6 +13,11 @@
 - [x] 2.2 GREEN: implement refresh token generation/hash/session persistence in `src/modules/auth/auth-session.service.ts` and transactional rotate-or-revoke logic in `src/modules/auth/auth.service.ts`.
 - [x] 2.3 RED: add e2e coverage in `test/auth.e2e-spec.ts` for `POST /auth/login` cookie issuance, `POST /auth/refresh`, generic `401`, and concurrent-session independence.
 - [x] 2.4 GREEN: update `src/modules/auth/auth.controller.ts`, `src/modules/auth/auth.module.ts`, `src/modules/auth/dto/login-response.dto.ts`, and create `src/modules/auth/dto/refresh-response.dto.ts`.
+- [x] 3.1 RED: add failing unit/e2e tests for state-neutral `POST /auth/logout` and bearer-protected `POST /auth/logout-all` in `src/modules/auth/auth.service.spec.ts` and `test/auth.e2e-spec.ts`.
+- [x] 3.2 GREEN: implement current-session revoke and user-wide revoke paths in `src/modules/auth/auth.service.ts` and `src/modules/auth/auth.controller.ts`, including cookie clearing.
+- [x] 3.3 RED/GREEN: update `src/modules/auth/auth.openapi.spec.ts` and Swagger decorators so login/refresh/logout document cookie behavior and `logout-all` documents bearer auth.
+- [x] 4.1 Refactor auth helpers/DTO names under `src/modules/auth/` after GREEN while preserving focused auth unit/e2e coverage.
+- [x] 4.2 Run `pnpm test`, `pnpm test:e2e`, and `pnpm build`; fix only auth-session regressions and record final stacked-PR verification notes in this change folder.
 
 ## Files Changed
 
@@ -30,14 +35,17 @@
 | `prisma/schema.prisma` | Modified | Added `User.authSessions` and the `AuthSession` model. |
 | `prisma/migrations/20260713105353_add_auth_sessions/migration.sql` | Created | Added the auth session table, unique token hash, base indexes, and active partial indexes. |
 | `prisma/migrations/migration_lock.toml` | Created | Recorded Prisma's migration provider lock for the new migration directory. |
-| `src/modules/auth/auth.service.spec.ts` | Modified | Added RED coverage for login cookie issuance, refresh rejection, rotation, and replay-family revocation. |
-| `src/modules/auth/auth.service.ts` | Modified | Implemented refresh-session issuance on login, generic refresh validation, transactional rotation, and replay-family revocation. |
-| `src/modules/auth/auth.controller.ts` | Modified | Issued the refresh cookie on login, added `POST /auth/refresh`, and mapped request metadata into auth-session flows. |
+| `src/modules/auth/auth.service.spec.ts` | Modified | Added RED coverage for login/refresh/logout/logout-all session lifecycle behavior. |
+| `src/modules/auth/auth.service.ts` | Modified | Implemented refresh rotation, current-session logout, token-family revocation, and logout-all session revocation. |
+| `src/modules/auth/auth.controller.ts` | Modified | Issued/cleared refresh cookies, added `POST /auth/logout`, and added bearer-protected `POST /auth/logout-all` with Swagger docs. |
 | `src/modules/auth/auth.module.ts` | Modified | Registered `AuthSessionService` in the Nest auth module. |
-| `src/modules/auth/dto/login-response.dto.ts` | Modified | Kept the access-token-only body contract while login now issues the refresh token only as a cookie. |
-| `src/modules/auth/dto/refresh-response.dto.ts` | Created | Added the access-token-only DTO for `POST /auth/refresh`. |
-| `test/auth.e2e-spec.ts` | Modified | Added strict e2e coverage for login cookie issuance, refresh rotation, replay-family revocation, generic `401`, and concurrent-session independence with an in-memory auth-session harness. |
-| `openspec/changes/complete-auth-session-cycle/tasks.md` | Modified | Marked Work Unit 1 and Work Unit 2 tasks complete. |
+| `src/modules/auth/dto/auth-token-response.dto.ts` | Created | Extracted the shared access-token DTO contract used by login and refresh responses. |
+| `src/modules/auth/dto/login-response.dto.ts` | Modified | Refactored login response DTO to extend the shared token-response DTO. |
+| `src/modules/auth/dto/refresh-response.dto.ts` | Modified | Refactored refresh response DTO to extend the shared token-response DTO. |
+| `src/modules/auth/auth.openapi.spec.ts` | Modified | Added approval/contract coverage for refresh-cookie headers and bearer-protected logout-all documentation. |
+| `test/auth.e2e-spec.ts` | Modified | Added strict e2e coverage for logout, logout-all, cookie clearing, and updated the in-memory auth-session harness. |
+| `openspec/changes/complete-auth-session-cycle/tasks.md` | Modified | Marked Work Units 1-3 and verification tasks complete. |
+| `openspec/changes/complete-auth-session-cycle/verification-notes.md` | Created | Recorded final stacked-PR verification commands, results, and rollback boundary for Work Unit 3. |
 
 ## TDD Cycle Evidence
 
@@ -51,13 +59,18 @@
 | 2.2 | `src/modules/auth/auth.service.spec.ts`, `src/modules/auth/auth-session.service.spec.ts` | Unit | ✅ `pnpm test -- --runTestsByPath src/modules/auth/auth.service.spec.ts` → 1 suite, 10 tests passed | ✅ Used the RED from task 2.1 before service changes | ✅ `pnpm test -- --runTestsByPath src/modules/auth/auth.service.spec.ts src/modules/auth/auth-session.service.spec.ts` → 2 suites, 19 tests passed | ✅ Forced real rotation logic with replay-family and context-metadata branches instead of hardcoded token responses | ✅ Introduced TTL resolution + token issuance in `AuthSessionService` and isolated transaction helpers in `AuthService` |
 | 2.3 | `test/auth.e2e-spec.ts` | E2E | ✅ `pnpm test:e2e -- --runTestsByPath test/auth.e2e-spec.ts` → 1 suite, 7 tests passed | ✅ Added failing login-cookie and refresh-flow assertions first; run failed with 1 suite failed, 10 failed because `AuthSessionService` was not wired and refresh endpoints/cookies were absent | ✅ Paired GREEN confirmed in task 2.4 via 1 suite, 10 tests passed | ✅ Covered login cookie issuance, refresh rotation, missing-cookie generic `401`, replay-family revocation, and concurrent-session independence | ✅ Refined the in-memory auth-session harness to model hashed lookup/update flows without touching runtime code |
 | 2.4 | `test/auth.e2e-spec.ts` | E2E | ✅ `pnpm test:e2e -- --runTestsByPath test/auth.e2e-spec.ts` → 1 suite, 7 tests passed | ✅ Used the RED from task 2.3 before controller/module/DTO edits | ✅ `pnpm test:e2e -- --runTestsByPath test/auth.e2e-spec.ts` → 1 suite, 10 tests passed; `pnpm build` → exit 0 | ✅ Proved both single-session rotation and sibling-session independence through different user-agent cookie flows | ✅ Switched Express imports to type-only and kept the access-token-only DTO contract while wiring cookie transport |
+| 3.1 | `src/modules/auth/auth.service.spec.ts`, `test/auth.e2e-spec.ts` | Unit + E2E | ✅ `pnpm test -- --runTestsByPath src/modules/auth/auth.service.spec.ts src/modules/auth/auth.openapi.spec.ts` → 2 suites, 19 tests passed; `pnpm test:e2e -- --runTestsByPath test/auth.e2e-spec.ts` → 1 suite, 11 tests passed | ✅ Added failing logout/logout-all assertions first; unit run failed with `service.logout is not a function` / `service.logoutAll is not a function`, e2e run failed with `404 Not Found` on `/auth/logout` and `/auth/logout-all` | ✅ `pnpm test -- --runTestsByPath src/modules/auth/auth.service.spec.ts` → 1 suite, 22 tests passed; `pnpm test:e2e -- --runTestsByPath test/auth.e2e-spec.ts` → 1 suite, 15 tests passed | ✅ Covered missing/unknown logout state neutrality, single-session logout, bearer-required logout-all, and user-wide revocation | ✅ Expanded the in-memory e2e harness with `userId`-wide revocation behavior while keeping production scope focused |
+| 3.2 | `src/modules/auth/auth.service.spec.ts`, `test/auth.e2e-spec.ts` | Unit + E2E | ✅ Same baseline as task 3.1 | ✅ Used the RED from task 3.1 before service/controller edits | ✅ `pnpm test -- --runTestsByPath src/modules/auth/auth.service.spec.ts` → 1 suite, 22 tests passed; `pnpm test:e2e -- --runTestsByPath test/auth.e2e-spec.ts` → 1 suite, 15 tests passed | ✅ Forced separate code paths for no-cookie logout, active-session logout, bearer auth, and logout-all sibling-session revocation | ✅ Extracted single-purpose revoke helpers and cookie-clearing behavior without changing login/refresh contracts |
+| 3.3 | `src/modules/auth/auth.openapi.spec.ts` | Unit (OpenAPI contract) | ✅ `pnpm test -- --runTestsByPath src/modules/auth/auth.openapi.spec.ts` → 1 suite, 2 tests passed | ✅ Added failing contract assertions first; run failed because `Set-Cookie` response headers and bearer security for `/auth/logout-all` were undocumented | ✅ `pnpm test -- --runTestsByPath src/modules/auth/auth.openapi.spec.ts` → 1 suite, 4 tests passed | ✅ Documented login/refresh/logout cookie headers plus logout-all bearer auth and 204 response contract | ✅ Centralized the refresh-cookie response-header metadata to avoid decorator duplication |
+| 4.1 | `src/modules/auth/auth.openapi.spec.ts`, `src/modules/auth/auth.service.spec.ts`, `test/auth.e2e-spec.ts` | Unit + E2E approval | ✅ `pnpm test -- --runTestsByPath src/modules/auth/auth.openapi.spec.ts` → 1 suite, 5 tests passed before refactor | ✅ Added an approval test asserting login and refresh DTO schemas stay aligned before introducing the shared DTO base | ✅ `pnpm test -- --runTestsByPath src/modules/auth/auth.openapi.spec.ts src/modules/auth/auth.service.spec.ts` → 2 suites, 27 tests passed; `pnpm test:e2e -- --runTestsByPath test/auth.e2e-spec.ts` → 1 suite, 15 tests passed | ✅ Approval test preserved schema parity while DTO inheritance replaced duplicated response fields | ✅ Introduced `AuthTokenResponseDto` and renamed the shared contract around a single source of truth |
+| 4.2 | `src/modules/auth/auth.service.spec.ts`, `src/modules/auth/auth.openapi.spec.ts`, `test/auth.e2e-spec.ts` | Verification | ✅ Focused suites already green before full verification | ✅ Initial full verification exposed a real build failure: `pnpm build` failed with TS1272 on `AuthenticatedUser` needing `import type` in `auth.controller.ts` | ✅ After the import fix: `pnpm test` → 17 suites, 107 tests passed; `pnpm test:e2e` → 3 suites, 39 tests passed; `pnpm build` → exit 0 | ➖ Triangulation skipped: verification-only task; the failing build plus full-suite rerun provided the non-trivial second path | ✅ Applied the minimal import-only fix and recorded final verification notes in the change folder |
 
 ## Test Summary
 
-- **Total tests written**: 21
-- **Total tests passing**: 29
-- **Layers used**: Unit (19), Integration (0), E2E (10)
-- **Approval tests**: None — no refactoring-only task in these slices
+- **Total tests written**: 33
+- **Total tests passing**: 46
+- **Layers used**: Unit (31), Integration (0), E2E (15)
+- **Approval tests**: 1 — DTO schema parity before the shared response DTO refactor
 - **Pure functions created**: 8
 
 ## Work Unit Evidence
@@ -78,6 +91,14 @@
 | Runtime harness command/scenario and exact result | `pnpm test:e2e -- --runTestsByPath test/auth.e2e-spec.ts` with `POST /auth/login` then `POST /auth/refresh` using the rotated cookie → exit 0, 1 suite passed, 10 tests passed. Supplemental compile check: `pnpm build` → exit 0. |
 | Rollback boundary | Revert only `src/modules/auth/auth.service.spec.ts`, `src/modules/auth/auth.service.ts`, `src/modules/auth/auth.controller.ts`, `src/modules/auth/auth.module.ts`, `src/modules/auth/dto/login-response.dto.ts`, `src/modules/auth/dto/refresh-response.dto.ts`, `test/auth.e2e-spec.ts`, and the four Work Unit 2 checkboxes in `openspec/changes/complete-auth-session-cycle/tasks.md`; keep Work Unit 1 schema/config foundation intact. |
 
+### Work Unit 3 / PR 3
+
+| Evidence | Required value |
+|---|---|
+| Focused test command and exact result | `pnpm test -- --runTestsByPath src/modules/auth/auth.service.spec.ts src/modules/auth/auth.openapi.spec.ts` → exit 0, 2 suites passed, 27 tests passed |
+| Runtime harness command/scenario and exact result | `pnpm test:e2e -- --runTestsByPath test/auth.e2e-spec.ts` covering `POST /auth/logout` and bearer `POST /auth/logout-all` with sibling-session refresh checks → exit 0, 1 suite passed, 15 tests passed. Supplemental final verification: `pnpm test` → 17 suites, 107 tests passed; `pnpm test:e2e` → 3 suites, 39 tests passed; `pnpm build` → exit 0. |
+| Rollback boundary | Revert only `src/modules/auth/auth.service.ts`, `src/modules/auth/auth.controller.ts`, `src/modules/auth/auth.service.spec.ts`, `src/modules/auth/auth.openapi.spec.ts`, `src/modules/auth/dto/auth-token-response.dto.ts`, `src/modules/auth/dto/login-response.dto.ts`, `src/modules/auth/dto/refresh-response.dto.ts`, `test/auth.e2e-spec.ts`, `openspec/changes/complete-auth-session-cycle/tasks.md`, `openspec/changes/complete-auth-session-cycle/apply-progress.md`, and `openspec/changes/complete-auth-session-cycle/verification-notes.md`; keep Work Units 1-2 intact. |
+
 ## Correction Evidence: review-83315d59e5cd1b45 / RESILIENCE-001
 
 Added RED/GREEN config coverage so refresh env vars may be absent while JWT env remains required; `src/config/auth.config.ts` now defaults refresh TTL/cookie values and still rejects invalid provided values. Verification: `pnpm test -- --runTestsByPath src/config/auth.config.spec.ts`, `pnpm test -- --runTestsByPath src/config/auth.config.spec.ts src/main.spec.ts`, `pnpm test:e2e -- --runTestsByPath test/auth.e2e-spec.ts`, and `pnpm build` all passed; no Work Unit 2 endpoint behavior was added.
@@ -88,28 +109,24 @@ Added RED coverage for guarded same-cookie refresh consumption and access-token 
 
 ## Deviations from Design
 
-None — implementation matches the Work Unit 1 + Work Unit 2 slice boundaries. The controller keeps refresh tokens out of response bodies and transports them only through the configured HttpOnly cookie.
+None — implementation matches the stacked Work Unit 3 boundary. `POST /auth/logout` stays refresh-cookie based and state-neutral, while `POST /auth/logout-all` remains bearer-protected and clears the current refresh cookie.
 
 ## Issues Found
 
-- `pnpm prisma:migrate:dev -- --name add_auth_sessions --create-only` entered Prisma's interactive prompt because the extra `--` prevented the migration name from binding. Re-running as `pnpm prisma:migrate:dev --name add_auth_sessions --create-only` succeeded.
-- `nest build` initially failed with TS1272 because Express decorated handler types must use `import type` under `isolatedModules`; switching `Request`/`Response` to type-only imports fixed it without behavior changes.
+- `pnpm build` initially failed with TS1272 because decorated handler parameter types must use `import type` under `isolatedModules`; switching `AuthenticatedUser` to a type-only import fixed the regression without changing runtime behavior.
+- Full e2e verification logs the intentional `database offline` branch from the generic `503` coverage case in `test/auth.e2e-spec.ts`; the suite still passes and the log is expected.
 
 ## Remaining Tasks
 
-- [ ] 3.1 RED: add failing unit/e2e tests for state-neutral `POST /auth/logout` and bearer-protected `POST /auth/logout-all` in `src/modules/auth/auth.service.spec.ts` and `test/auth.e2e-spec.ts`.
-- [ ] 3.2 GREEN: implement current-session revoke and user-wide revoke paths in `src/modules/auth/auth.service.ts` and `src/modules/auth/auth.controller.ts`, including cookie clearing.
-- [ ] 3.3 RED/GREEN: update `src/modules/auth/auth.openapi.spec.ts` and Swagger decorators so login/refresh/logout document cookie behavior and `logout-all` documents bearer auth.
-- [ ] 4.1 Refactor auth helpers/DTO names under `src/modules/auth/` after GREEN while preserving focused auth unit/e2e coverage.
-- [ ] 4.2 Run `pnpm test`, `pnpm test:e2e`, and `pnpm build`; fix only auth-session regressions and record final stacked-PR verification notes in this change folder.
+- [x] None.
 
 ## Workload / PR Boundary
 
 - **Mode**: stacked PR slice
-- **Current work unit**: Work Unit 2 / PR 2 — login cookie issuance + refresh rotation/replay defense
-- **Boundary**: Starts from the landed Work Unit 1 session foundation and ends after login issues the refresh cookie, `POST /auth/refresh` rotates sessions transactionally, replay revokes the affected family, and sibling sessions remain independent. `POST /auth/logout` and `POST /auth/logout-all` remain out of scope for PR 3.
-- **Estimated review budget impact**: The local stacked branch still carries Work Unit 1 + Work Unit 2 together; the intended reviewer-visible PR 2 diff is the incremental login/refresh slice on top of PR 1.
+- **Current work unit**: Work Unit 3 / PR 3 — logout/logout-all + Swagger contract polish + cleanup/verification
+- **Boundary**: Starts from committed WU1 (`b0ea08c`) and WU2 (`94dbd94`) and ends after current-session logout, bearer-protected logout-all, shared token-response DTO cleanup, and full verification notes land without changing WU1/WU2 behavior beyond required auth-session wiring and contract docs.
+- **Estimated review budget impact**: Focused to the final auth-session revocation/documentation slice; verification notes and DTO cleanup stay within the intended stacked PR boundary.
 
 ## Status
 
-8/13 tasks complete. Ready for next batch.
+13/13 tasks complete. Ready for verify.

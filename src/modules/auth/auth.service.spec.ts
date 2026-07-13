@@ -519,4 +519,84 @@ describe('AuthService', () => {
     expect(authSessionService.issueSession).not.toHaveBeenCalled();
     expect(jwtService.signAsync).not.toHaveBeenCalled();
   });
+
+  it.each([
+    {
+      caseName: 'missing refresh token',
+      refreshToken: undefined,
+      session: null,
+    },
+    {
+      caseName: 'unknown refresh token',
+      refreshToken: 'unknown-refresh-token',
+      session: null,
+    },
+    {
+      caseName: 'inactive session',
+      refreshToken: 'inactive-refresh-token',
+      session: {
+        ...activeSession,
+        revokedAt: new Date('2026-07-13T10:05:00.000Z'),
+      },
+    },
+  ])(
+    'returns a state-neutral logout result for %s',
+    async ({ refreshToken, session }) => {
+      authSessionService.findSessionByToken.mockResolvedValue(session);
+
+      await expect(
+        service.logout(refreshToken, {
+          userAgent: 'Workshop iPad',
+          ipAddress: '10.10.0.16',
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(prisma.authSession.updateMany).not.toHaveBeenCalled();
+      expect(jwtService.signAsync).not.toHaveBeenCalled();
+    },
+  );
+
+  it('revokes only the current refresh session during logout', async () => {
+    authSessionService.findSessionByToken.mockResolvedValue(activeSession);
+
+    await expect(
+      service.logout('current-refresh-token', {
+        userAgent: 'Workshop iPad',
+        ipAddress: '10.10.0.16',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(prisma.authSession.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: activeSession.id,
+        consumedAt: null,
+        revokedAt: null,
+        expiresAt: { gt: expect.any(Date) },
+      },
+      data: {
+        revokedAt: expect.any(Date),
+        lastUsedUserAgent: 'Workshop iPad',
+        lastUsedIp: '10.10.0.16',
+      },
+    });
+  });
+
+  it('revokes every active refresh session for the authenticated user during logout-all', async () => {
+    prisma.authSession.updateMany.mockResolvedValue({ count: 2 });
+
+    await expect(service.logoutAll(storedUser.id)).resolves.toBeUndefined();
+
+    expect(prisma.authSession.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: storedUser.id,
+        revokedAt: null,
+        expiresAt: { gt: expect.any(Date) },
+      },
+      data: {
+        revokedAt: expect.any(Date),
+      },
+    });
+    expect(authSessionService.findSessionByToken).not.toHaveBeenCalled();
+    expect(jwtService.signAsync).not.toHaveBeenCalled();
+  });
 });

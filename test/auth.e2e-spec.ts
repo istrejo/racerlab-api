@@ -163,6 +163,21 @@ describe('AuthController (e2e)', () => {
               continue;
             }
 
+            if (where.userId) {
+              if (
+                session.userId === where.userId &&
+                session.revokedAt === (where.revokedAt ?? session.revokedAt) &&
+                (!where.expiresAt || session.expiresAt.getTime() > where.expiresAt.gt.getTime())
+              ) {
+                Object.assign(session, data, {
+                  updatedAt: new Date('2026-07-13T12:06:00.000Z'),
+                });
+                count += 1;
+              }
+
+              continue;
+            }
+
             if (
               session.tokenFamilyId === where.tokenFamilyId &&
               session.revokedAt === where.revokedAt
@@ -534,5 +549,119 @@ describe('AuthController (e2e)', () => {
       .expect(200);
 
     expect(refreshedB.body).toMatchObject({ tokenType: 'Bearer' });
+  });
+
+  it('POST /auth/logout revokes only the current refresh session and clears the cookie', async () => {
+    const loginResponseA = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        email: 'ada@example.com',
+        password: 'super-secret',
+      })
+      .set('User-Agent', 'Workshop iPad')
+      .expect(200);
+
+    const loginResponseB = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        email: 'ada@example.com',
+        password: 'super-secret',
+      })
+      .set('User-Agent', 'Front Desk Chrome')
+      .expect(200);
+
+    const cookieA = extractRefreshCookie(loginResponseA.headers['set-cookie']);
+    const cookieB = extractRefreshCookie(loginResponseB.headers['set-cookie']);
+
+    const logoutResponse = await request(app.getHttpServer())
+      .post('/auth/logout')
+      .set('Cookie', cookieA)
+      .set('User-Agent', 'Workshop iPad')
+      .expect(204);
+
+    expect(logoutResponse.headers['set-cookie']).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('rl_refresh='),
+        expect.stringContaining('HttpOnly'),
+        expect.stringContaining('Path=/auth'),
+      ]),
+    );
+
+    await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', cookieA)
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', cookieB)
+      .set('User-Agent', 'Front Desk Chrome')
+      .expect(200);
+  });
+
+  it('POST /auth/logout stays state-neutral and clears the cookie even without a current refresh session', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/logout')
+      .expect(204);
+
+    expect(response.headers['set-cookie']).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('rl_refresh='),
+        expect.stringContaining('HttpOnly'),
+        expect.stringContaining('Path=/auth'),
+      ]),
+    );
+  });
+
+  it('POST /auth/logout-all requires bearer authentication', async () => {
+    await request(app.getHttpServer()).post('/auth/logout-all').expect(401);
+  });
+
+  it('POST /auth/logout-all revokes every active refresh session for the authenticated user', async () => {
+    const loginResponseA = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        email: 'ada@example.com',
+        password: 'super-secret',
+      })
+      .set('User-Agent', 'Workshop iPad')
+      .expect(200);
+
+    const loginResponseB = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        email: 'ada@example.com',
+        password: 'super-secret',
+      })
+      .set('User-Agent', 'Front Desk Chrome')
+      .expect(200);
+
+    const cookieA = extractRefreshCookie(loginResponseA.headers['set-cookie']);
+    const cookieB = extractRefreshCookie(loginResponseB.headers['set-cookie']);
+    const accessToken = (loginResponseA.body as LoginResponseDto).accessToken;
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/logout-all')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .set('Cookie', cookieA)
+      .expect(204);
+
+    expect(response.headers['set-cookie']).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('rl_refresh='),
+        expect.stringContaining('HttpOnly'),
+        expect.stringContaining('Path=/auth'),
+      ]),
+    );
+
+    await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', cookieA)
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .set('Cookie', cookieB)
+      .expect(401);
   });
 });

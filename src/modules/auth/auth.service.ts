@@ -167,6 +167,66 @@ export class AuthService {
     }
   }
 
+  async logout(
+    refreshToken?: string,
+    context: AuthRequestContext = {},
+  ): Promise<void> {
+    try {
+      if (!refreshToken) {
+        return;
+      }
+
+      const session = await this.authSessionService.findSessionByToken(refreshToken);
+
+      if (
+        !session ||
+        !session.user.isActive ||
+        session.consumedAt ||
+        session.revokedAt ||
+        session.expiresAt.getTime() <= Date.now()
+      ) {
+        return;
+      }
+
+      await this.revokeRefreshSession(session.id, new Date(), context);
+    } catch (error) {
+      this.logger.error(
+        'Authentication logout failed due to an internal dependency.',
+        error instanceof Error ? (error.stack ?? error.message) : String(error),
+      );
+
+      throw new ServiceUnavailableException(
+        'Authentication service temporarily unavailable.',
+      );
+    }
+  }
+
+  async logoutAll(userId: string): Promise<void> {
+    try {
+      const revokedAt = new Date();
+
+      await this.prisma.authSession.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+          expiresAt: { gt: revokedAt },
+        },
+        data: {
+          revokedAt,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        'Authentication logout-all failed due to an internal dependency.',
+        error instanceof Error ? (error.stack ?? error.message) : String(error),
+      );
+
+      throw new ServiceUnavailableException(
+        'Authentication service temporarily unavailable.',
+      );
+    }
+  }
+
   private async findUserForLogin(normalizedEmail: string) {
     const exactMatch = await this.prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -261,6 +321,26 @@ export class AuthService {
           revokedAt,
         },
       });
+    });
+  }
+
+  private async revokeRefreshSession(
+    sessionId: string,
+    revokedAt: Date,
+    context: AuthRequestContext,
+  ) {
+    await this.prisma.authSession.updateMany({
+      where: {
+        id: sessionId,
+        consumedAt: null,
+        revokedAt: null,
+        expiresAt: { gt: revokedAt },
+      },
+      data: {
+        revokedAt,
+        lastUsedUserAgent: context.userAgent,
+        lastUsedIp: context.ipAddress,
+      },
     });
   }
 }

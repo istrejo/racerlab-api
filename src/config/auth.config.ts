@@ -34,7 +34,7 @@ const JWT_DURATION_PATTERN = /^\d+(ms|s|m|h|d|w|y)$/;
 const SAME_SITE_VALUES = new Set<SameSite>(['strict', 'lax', 'none']);
 const DEFAULT_REFRESH_TOKEN_TTL: JwtDurationString = '30d';
 const DEFAULT_REFRESH_COOKIE_NAME = 'rl_refresh';
-const DEFAULT_REFRESH_COOKIE_PATH = '/auth';
+const DEFAULT_REFRESH_COOKIE_PATH = '/api/auth';
 const DEFAULT_REFRESH_COOKIE_SAME_SITE: SameSite = 'lax';
 
 function getJwtTtlErrorMessage(

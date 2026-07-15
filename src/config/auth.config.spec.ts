@@ -19,7 +19,7 @@ describe('getAuthConfig', () => {
       refreshCookie: {
         name: 'rl_refresh',
         httpOnly: true,
-        path: '/auth',
+        path: '/api/auth',
         secure: true,
         sameSite: 'strict',
         domain: 'api.racerlab.test',
@@ -44,7 +44,7 @@ describe('getAuthConfig', () => {
       refreshCookie: {
         name: 'rl_refresh',
         httpOnly: true,
-        path: '/auth',
+        path: '/api/auth',
         secure: false,
         sameSite: 'lax',
       },
@@ -69,7 +69,7 @@ describe('getAuthConfig', () => {
       refreshCookie: {
         name: 'rl_refresh',
         httpOnly: true,
-        path: '/auth',
+        path: '/api/auth',
         secure: false,
         sameSite: 'none',
       },
@@ -89,7 +89,7 @@ describe('getAuthConfig', () => {
       refreshCookie: {
         name: 'rl_refresh',
         httpOnly: true,
-        path: '/auth',
+        path: '/api/auth',
         secure: false,
         sameSite: 'lax',
       },

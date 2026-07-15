@@ -2,6 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { getCorsConfig } from './config/cors.config';
 import { setupSwagger } from './config/swagger.config';
 
 export function configureValidation(app: INestApplication): void {
@@ -16,6 +17,7 @@ export function configureValidation(app: INestApplication): void {
 
 export function configureApp(app: INestApplication): void {
   app.setGlobalPrefix('api');
+  app.enableCors(getCorsConfig());
   app.use(cookieParser());
   configureValidation(app);
   setupSwagger(app);

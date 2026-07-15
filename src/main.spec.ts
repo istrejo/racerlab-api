@@ -29,6 +29,7 @@ describe('configureApp', () => {
   it('registers cookie parsing before Swagger so auth cookies are available to routes', () => {
     const app = {
       setGlobalPrefix: jest.fn(),
+      enableCors: jest.fn(),
       use: jest.fn(),
       useGlobalPipes: jest.fn(),
     };
@@ -36,6 +37,12 @@ describe('configureApp', () => {
     configureApp(app as never);
 
     expect(app.setGlobalPrefix).toHaveBeenCalledWith('api');
+    expect(app.enableCors).toHaveBeenCalledWith({
+      origin: ['http://localhost:4200'],
+      credentials: true,
+      methods: ['GET', 'HEAD', 'POST', 'PATCH'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    });
     expect(app.use).toHaveBeenCalledTimes(1);
 
     const [middleware] = app.use.mock.calls[0] as [(...args: unknown[]) => unknown];

@@ -222,9 +222,69 @@ describe('AuthController (e2e)', () => {
     restoreJwtTestEnv = undefined;
   });
 
+  it.each([
+    ['POST', '/api/auth/logout-all'],
+    ['GET', '/api/users'],
+    ['PATCH', '/api/users/2f1b7652-92f6-4a32-863f-26b5af5e0c12'],
+  ])(
+    'allows credentialed %s preflight requests from the Angular development origin',
+    async (method, path) => {
+      const origin = 'http://localhost:4200';
+
+      const preflight = await request(app.getHttpServer())
+        .options(path)
+        .set('Origin', origin)
+        .set('Access-Control-Request-Method', method)
+        .set('Access-Control-Request-Headers', 'content-type,authorization')
+        .expect(204);
+
+      expect(preflight.headers['access-control-allow-origin']).toBe(origin);
+      expect(preflight.headers['access-control-allow-credentials']).toBe(
+        'true',
+      );
+      expect(preflight.headers['access-control-allow-methods']).toContain(
+        method,
+      );
+      expect(preflight.headers['access-control-allow-headers']).toContain(
+        'Content-Type',
+      );
+      expect(preflight.headers['access-control-allow-headers']).toContain(
+        'Authorization',
+      );
+    },
+  );
+
+  it('allows credentialed auth requests from the Angular development origin', async () => {
+    const origin = 'http://localhost:4200';
+
+    const login = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .set('Origin', origin)
+      .send({
+        email: 'ada@example.com',
+        password: 'super-secret',
+      })
+      .expect(200);
+
+    expect(login.headers['access-control-allow-origin']).toBe(origin);
+    expect(login.headers['access-control-allow-credentials']).toBe('true');
+    expect(login.headers['set-cookie']).toEqual(
+      expect.arrayContaining([expect.stringContaining('HttpOnly')]),
+    );
+  });
+
+  it('does not allow an untrusted origin to read auth responses', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .set('Origin', 'http://localhost:4201')
+      .expect(401);
+
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
   it('POST /auth/login returns an access token body and issues a refresh cookie for valid active credentials', async () => {
     const response = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: '  ADA@EXAMPLE.COM  ',
         password: 'super-secret',
@@ -241,7 +301,7 @@ describe('AuthController (e2e)', () => {
       expect.arrayContaining([
         expect.stringContaining('rl_refresh='),
         expect.stringContaining('HttpOnly'),
-        expect.stringContaining('Path=/auth'),
+        expect.stringContaining('Path=/api/auth'),
       ]),
     );
 
@@ -287,7 +347,7 @@ describe('AuthController (e2e)', () => {
     ]);
 
     const response = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: '  ADA@EXAMPLE.COM  ',
         password: 'super-secret',
@@ -343,7 +403,7 @@ describe('AuthController (e2e)', () => {
     arrange();
 
     const response = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'wrong-secret',
@@ -369,7 +429,7 @@ describe('AuthController (e2e)', () => {
     ]);
 
     const response = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'super-secret',
@@ -388,7 +448,7 @@ describe('AuthController (e2e)', () => {
     prisma.user.findUnique.mockRejectedValueOnce(new Error('database offline'));
 
     const response = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'super-secret',
@@ -404,7 +464,7 @@ describe('AuthController (e2e)', () => {
 
   it('POST /auth/refresh rotates the refresh cookie and returns a fresh access token', async () => {
     const loginResponse = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'super-secret',
@@ -414,7 +474,7 @@ describe('AuthController (e2e)', () => {
     const initialCookie = extractRefreshCookie(loginResponse.headers['set-cookie']);
 
     const refreshResponse = await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post('/api/auth/refresh')
       .set('Cookie', initialCookie)
       .expect(200);
 
@@ -439,7 +499,7 @@ describe('AuthController (e2e)', () => {
 
   it('POST /auth/refresh accepts only one concurrent use of the same refresh cookie', async () => {
     const loginResponse = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'super-secret',
@@ -450,11 +510,11 @@ describe('AuthController (e2e)', () => {
 
     const responses = await Promise.all([
       request(app.getHttpServer())
-        .post('/auth/refresh')
+        .post('/api/auth/refresh')
         .set('Cookie', initialCookie)
         .set('User-Agent', 'Concurrent Client'),
       request(app.getHttpServer())
-        .post('/auth/refresh')
+        .post('/api/auth/refresh')
         .set('Cookie', initialCookie)
         .set('User-Agent', 'Concurrent Client'),
     ]);
@@ -476,10 +536,10 @@ describe('AuthController (e2e)', () => {
   });
 
   it('POST /auth/refresh returns the same generic 401 for missing and replayed refresh state', async () => {
-    await request(app.getHttpServer()).post('/auth/refresh').expect(401);
+    await request(app.getHttpServer()).post('/api/auth/refresh').expect(401);
 
     const loginResponse = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'super-secret',
@@ -489,14 +549,14 @@ describe('AuthController (e2e)', () => {
     const originalCookie = extractRefreshCookie(loginResponse.headers['set-cookie']);
 
     const firstRefresh = await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post('/api/auth/refresh')
       .set('Cookie', originalCookie)
       .expect(200);
 
     const rotatedCookie = extractRefreshCookie(firstRefresh.headers['set-cookie']);
 
     const replayedResponse = await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post('/api/auth/refresh')
       .set('Cookie', originalCookie)
       .expect(401);
 
@@ -507,14 +567,14 @@ describe('AuthController (e2e)', () => {
     });
 
     await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post('/api/auth/refresh')
       .set('Cookie', rotatedCookie)
       .expect(401);
   });
 
   it('POST /auth/refresh keeps concurrent sessions independent', async () => {
     const loginResponseA = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'super-secret',
@@ -523,7 +583,7 @@ describe('AuthController (e2e)', () => {
       .expect(200);
 
     const loginResponseB = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'super-secret',
@@ -535,7 +595,7 @@ describe('AuthController (e2e)', () => {
     const cookieB = extractRefreshCookie(loginResponseB.headers['set-cookie']);
 
     const refreshedA = await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post('/api/auth/refresh')
       .set('Cookie', cookieA)
       .set('User-Agent', 'Workshop iPad')
       .expect(200);
@@ -543,7 +603,7 @@ describe('AuthController (e2e)', () => {
     extractRefreshCookie(refreshedA.headers['set-cookie']);
 
     const refreshedB = await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post('/api/auth/refresh')
       .set('Cookie', cookieB)
       .set('User-Agent', 'Front Desk Chrome')
       .expect(200);
@@ -553,7 +613,7 @@ describe('AuthController (e2e)', () => {
 
   it('POST /auth/logout revokes only the current refresh session and clears the cookie', async () => {
     const loginResponseA = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'super-secret',
@@ -562,7 +622,7 @@ describe('AuthController (e2e)', () => {
       .expect(200);
 
     const loginResponseB = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'super-secret',
@@ -574,7 +634,7 @@ describe('AuthController (e2e)', () => {
     const cookieB = extractRefreshCookie(loginResponseB.headers['set-cookie']);
 
     const logoutResponse = await request(app.getHttpServer())
-      .post('/auth/logout')
+      .post('/api/auth/logout')
       .set('Cookie', cookieA)
       .set('User-Agent', 'Workshop iPad')
       .expect(204);
@@ -583,17 +643,17 @@ describe('AuthController (e2e)', () => {
       expect.arrayContaining([
         expect.stringContaining('rl_refresh='),
         expect.stringContaining('HttpOnly'),
-        expect.stringContaining('Path=/auth'),
+        expect.stringContaining('Path=/api/auth'),
       ]),
     );
 
     await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post('/api/auth/refresh')
       .set('Cookie', cookieA)
       .expect(401);
 
     await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post('/api/auth/refresh')
       .set('Cookie', cookieB)
       .set('User-Agent', 'Front Desk Chrome')
       .expect(200);
@@ -601,25 +661,25 @@ describe('AuthController (e2e)', () => {
 
   it('POST /auth/logout stays state-neutral and clears the cookie even without a current refresh session', async () => {
     const response = await request(app.getHttpServer())
-      .post('/auth/logout')
+      .post('/api/auth/logout')
       .expect(204);
 
     expect(response.headers['set-cookie']).toEqual(
       expect.arrayContaining([
         expect.stringContaining('rl_refresh='),
         expect.stringContaining('HttpOnly'),
-        expect.stringContaining('Path=/auth'),
+        expect.stringContaining('Path=/api/auth'),
       ]),
     );
   });
 
   it('POST /auth/logout-all requires bearer authentication', async () => {
-    await request(app.getHttpServer()).post('/auth/logout-all').expect(401);
+    await request(app.getHttpServer()).post('/api/auth/logout-all').expect(401);
   });
 
   it('POST /auth/logout-all revokes every active refresh session for the authenticated user', async () => {
     const loginResponseA = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'super-secret',
@@ -628,7 +688,7 @@ describe('AuthController (e2e)', () => {
       .expect(200);
 
     const loginResponseB = await request(app.getHttpServer())
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'ada@example.com',
         password: 'super-secret',
@@ -641,7 +701,7 @@ describe('AuthController (e2e)', () => {
     const accessToken = (loginResponseA.body as LoginResponseDto).accessToken;
 
     const response = await request(app.getHttpServer())
-      .post('/auth/logout-all')
+      .post('/api/auth/logout-all')
       .set('Authorization', `Bearer ${accessToken}`)
       .set('Cookie', cookieA)
       .expect(204);
@@ -650,17 +710,17 @@ describe('AuthController (e2e)', () => {
       expect.arrayContaining([
         expect.stringContaining('rl_refresh='),
         expect.stringContaining('HttpOnly'),
-        expect.stringContaining('Path=/auth'),
+        expect.stringContaining('Path=/api/auth'),
       ]),
     );
 
     await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post('/api/auth/refresh')
       .set('Cookie', cookieA)
       .expect(401);
 
     await request(app.getHttpServer())
-      .post('/auth/refresh')
+      .post('/api/auth/refresh')
       .set('Cookie', cookieB)
       .expect(401);
   });

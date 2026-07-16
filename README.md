@@ -1,98 +1,152 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# RacerLab API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend foundation for a workshop-management platform built around traceable service operations, secure authentication, and a scalable domain model.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+> **Project status:** Active development. Authentication, refresh-session rotation, RBAC, protected user management, API documentation, health checks, and the initial workshop domain schema are implemented. Business modules and workshop-based tenancy are being developed incrementally.
 
-## Description
+## Overview
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+RacerLab is a SaaS-oriented product for mechanical workshops. Its goal is to centralize the full operational flow—from customer and vehicle intake to diagnosis, quotation, repair, inventory usage, evidence, and delivery—without losing traceability between stages.
 
-## Project setup
+This repository contains the REST API and the backend business foundation. The Angular client lives in [`racerlab-web`](https://github.com/istrejo/racerlab-web).
 
-```bash
-$ pnpm install
+## Implemented foundation
+
+- JWT access-token authentication.
+- Opaque refresh tokens transported through `HttpOnly` cookies.
+- Refresh-token rotation with persisted, hashed sessions.
+- Current-session logout and global logout across all active sessions.
+- Password hashing with Argon2.
+- Role-based access control using NestJS guards and decorators.
+- Protected administration endpoints for creating, listing, reading, and updating users.
+- Swagger/OpenAPI documentation with bearer authentication support.
+- Global DTO validation with payload whitelisting.
+- Configurable CORS and cookie behavior.
+- Database health checks.
+- Prisma migrations and seed support.
+
+## Domain foundation
+
+The current Prisma schema models the core workshop workflow:
+
+- Users, roles, permissions, and authentication sessions.
+- Customers and vehicles.
+- Service orders, priorities, technicians, and status history.
+- Diagnoses and quotations.
+- Repair tasks.
+- Inventory products, categories, and movements.
+- Evidence and comments linked to the service lifecycle.
+
+The schema is intentionally broader than the currently exposed HTTP modules. Domain endpoints are being implemented in vertical slices while the data model and authorization boundaries are refined.
+
+## Authentication flow
+
+1. `POST /api/auth/login` validates the user and returns a short-lived access token.
+2. A long-lived opaque refresh token is stored in an `HttpOnly` cookie.
+3. `POST /api/auth/refresh` rotates the refresh session and returns a new access token.
+4. `POST /api/auth/logout` revokes the current refresh session.
+5. `POST /api/auth/logout-all` revokes every active session for the authenticated user.
+
+The frontend keeps the access token in memory and relies on the refresh cookie to restore the session after a page reload.
+
+## Architecture
+
+```text
+src/
+├── common/          # Shared guards, decorators, auth types, and cross-cutting utilities
+├── config/          # Auth, CORS, and Swagger configuration
+├── health/          # Application and database health checks
+├── modules/
+│   ├── auth/        # Login, refresh rotation, logout, and session lifecycle
+│   └── users/       # Protected user administration
+├── prisma/          # Prisma integration
+└── testing/         # Shared testing safeguards and utilities
+
+prisma/
+├── migrations/
+├── schema.prisma
+└── seed.ts
 ```
 
-## Compile and run the project
+The backend is kept separate from the web client so both applications can evolve, test, and deploy independently.
+
+## Workshop tenancy roadmap
+
+The next major architecture milestone is workshop-based tenancy:
+
+- A global user identity can be associated with a workshop through a membership.
+- Roles and permissions are evaluated from the active workshop membership instead of directly from the user.
+- Operational records are scoped by `workshopId`.
+- Workshop owners can invite employees through expiring, one-time invitation tokens.
+- Authentication sessions remain bound to the active workshop context.
+
+This section describes the target architecture and is not presented as completed functionality.
+
+## Tech stack
+
+| Area | Technology |
+|---|---|
+| Runtime | Node.js, TypeScript |
+| Framework | NestJS 11 |
+| API | REST, Swagger / OpenAPI |
+| Database | PostgreSQL on Supabase |
+| ORM | Prisma 6 |
+| Authentication | Passport, JWT, HttpOnly cookies, Argon2 |
+| Validation | class-validator, class-transformer |
+| Testing | Jest, Supertest |
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 20+
+- pnpm
+- PostgreSQL or a Supabase project
+
+### Installation
 
 ```bash
-# development
-$ pnpm run start
-
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+git clone https://github.com/istrejo/racerlab-api.git
+cd racerlab-api
+pnpm install
+cp .env.example .env
 ```
 
-## Run tests
+Configure the database URLs and authentication values in `.env`, then generate the Prisma client and apply migrations:
 
 ```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
+pnpm prisma:generate
+pnpm prisma:migrate:dev
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Start the development server:
 
 ```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+pnpm start:dev
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+The API is available under `http://localhost:3000/api` and Swagger UI under `http://localhost:3000/api/docs`.
 
-## Resources
+## Useful commands
 
-Check out a few resources that may come in handy when working with NestJS:
+```bash
+pnpm build                 # Compile the application
+pnpm start:dev             # Run in watch mode
+pnpm test                  # Run unit tests
+pnpm test:e2e              # Run end-to-end tests
+pnpm test:cov              # Generate coverage
+pnpm prisma:studio         # Open Prisma Studio
+pnpm prisma:migrate:dev    # Create/apply a development migration
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Related repository
 
-## Support
+- [RacerLab Web](https://github.com/istrejo/racerlab-web) — Angular client and authentication shell.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+## Portfolio note
 
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+RacerLab is both a real product initiative and an engineering case study. It documents the transition from frontend-focused development into backend architecture, authentication, data modelling, API design, and multi-tenant SaaS decisions.
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+This repository is currently unlicensed and shared for portfolio and evaluation purposes. No permission is granted for production reuse.

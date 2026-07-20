@@ -14,6 +14,13 @@ describe('seedRoles', () => {
     );
   });
 
+  it('includes the OWNER bootstrap role for workshop tenancy registration', () => {
+    expect(BOOTSTRAP_ROLES).toContainEqual({
+      name: UserRole.OWNER,
+      description: 'Bootstrap owner role for workshop tenancy ownership.',
+    });
+  });
+
   it('upserts every bootstrap role by enum name', async () => {
     const upsert = jest.fn((args: RoleUpsertArgs) => Promise.resolve(args));
     const prisma = {

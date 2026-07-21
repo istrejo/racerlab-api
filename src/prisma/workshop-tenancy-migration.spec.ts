@@ -41,8 +41,27 @@ describe('workshop tenancy migration foundation', () => {
     expect(migration).toContain('service_order_id_workshop_unique');
     expect(migration).toContain('inventory_product_id_workshop_unique');
     expect(migration).toContain('auth_session_membership_user_fk');
-    expect(migration).toContain('create constraint trigger workshop_owner_membership_enforcer');
+    expect(migration).toContain(
+      'create constraint trigger workshop_owner_membership_enforcer',
+    );
     expect(migration).toContain('deferrable initially deferred');
+  });
+
+  it('wraps the reset guard and tenancy DDL in an explicit PostgreSQL transaction', () => {
+    const migration = readMigration().trim();
+
+    expect(migration.startsWith('begin;')).toBe(true);
+    expect(migration.endsWith('commit;')).toBe(true);
+  });
+
+  it('checks every workshop affected by a membership update and rejects extra active OWNER memberships', () => {
+    const migration = readMigration();
+
+    expect(migration).toContain('OLD.workshop_id');
+    expect(migration).toContain('NEW.workshop_id');
+    expect(migration).toContain('owner_membership_count <> 1');
+    expect(migration).toContain('matching_owner_membership_count <> 1');
+    expect(migration).toContain("roles.name::text = 'OWNER'");
   });
 
   it('documents same-workshop foreign keys for cross-workshop relation rejection', () => {
@@ -51,7 +70,9 @@ describe('workshop tenancy migration foundation', () => {
     expect(migration).toContain('foreign key (customer_id, workshop_id)');
     expect(migration).toContain('foreign key (vehicle_id, workshop_id)');
     expect(migration).toContain('foreign key (service_order_id, workshop_id)');
-    expect(migration).toContain('foreign key (inventory_product_id, workshop_id)');
+    expect(migration).toContain(
+      'foreign key (inventory_product_id, workshop_id)',
+    );
   });
 
   it('blocks every pre-existing workshop-owned table before adding required non-null workshop ids', () => {
@@ -116,6 +137,9 @@ describe('workshop tenancy migration foundation', () => {
       'legacy operational/users/session rows',
       'truncate dependent legacy data in FK order',
       'Approval is operational evidence, not a PostgreSQL session setting.',
+      'Quiesce the application',
+      'no concurrent writes',
+      'transactional',
     ].forEach((requiredSnippet) => {
       expect(runbook).toContain(requiredSnippet);
     });

@@ -81,3 +81,29 @@
 
 - 2/15 task lines complete.
 - Ready for the next stacked slice: Phase 2 auth context foundation.
+
+## Phase 1 Foundation Correction — Owner Trigger and Atomic Migration
+
+This corrective work unit stays within PR1 foundation scope. It does not advance Phase 2–5 task checkboxes.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|---|---|---|---|---|---|---|---|
+| Phase 1 correction: owner invariant and migration atomicity | `src/prisma/workshop-tenancy-migration.spec.ts`, `src/prisma/workshop-tenancy-postgres.integration.spec.ts` | Prisma static + opt-in PostgreSQL integration | ✅ Existing Phase 1 focused tests were included in the final focused run. | ✅ `pnpm test -- --runTestsByPath src/prisma/workshop-tenancy-migration.spec.ts src/prisma/workshop-tenancy-postgres.integration.spec.ts` initially failed: explicit `BEGIN`/`COMMIT`, OLD+NEW validation markers, exact-owner count, and maintenance runbook requirements were absent. The initial opt-in test constructor also required a no-URL guard, which was fixed in the harness before GREEN. | ✅ Static GREEN: final focused command passed 14 tests. ✅ Runtime GREEN: a temporary local PostgreSQL 15 database executed all 3 integration scenarios successfully. | ✅ The opt-in PostgreSQL suite covers deferred-commit extra OWNER rejection, an OLD→NEW owner-membership move rejection, and reset-guard rollback atomicity. | ✅ Reworked the trigger to iterate every affected workshop, lock each parent workshop for commit-time serialization, and count both all active OWNER memberships and owner-matching active OWNER memberships. |
+
+### Work Unit Evidence
+
+| Evidence | Required value |
+|---|---|
+| Focused test command and exact result | `pnpm test -- --runTestsByPath src/prisma/seed.spec.ts src/prisma/workshop-tenancy-schema.spec.ts src/prisma/workshop-tenancy-migration.spec.ts src/prisma/workshop-tenancy-postgres.integration.spec.ts` → exit 0; 3 suites passed, 1 suite skipped; 14 passed, 3 skipped, 17 total. |
+| PostgreSQL runtime harness command/scenario and exact result | Runtime command: `TEST_DATABASE_URL='postgresql://aletrejo@localhost:5432/racerlab_tenancy_test_<timestamp>' pnpm test -- --runTestsByPath src/prisma/workshop-tenancy-postgres.integration.spec.ts` → exit 0; 1 suite passed, 3 tests passed. The temporary PostgreSQL 15 database was created with `createdb`, then dropped in a shell `trap` with `dropdb --if-exists`; post-run `select exists(select 1 from pg_database where datname like 'racerlab_tenancy_test_%');` returned `f`. The suite resets only a database whose name contains `test`, applies the two prerequisite migrations plus this migration through `pnpm prisma db execute`, and proves reset-guard rollback atomicity, deferred-commit extra OWNER rejection, and OLD→NEW move rejection. |
+| Prisma validation | `DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/racerlab_test' DIRECT_URL='postgresql://postgres:postgres@127.0.0.1:5432/racerlab_test' pnpm exec prisma validate` → exit 0, schema valid. |
+| Build and lint | `pnpm exec eslint src/prisma/workshop-tenancy-migration.spec.ts src/prisma/workshop-tenancy-postgres.integration.spec.ts` → exit 0; `pnpm build` → exit 0. `pnpm lint` was not run because its package script includes `--fix`. |
+| Rollback boundary | Revert only `prisma/migrations/20260716030000_add_workshop_tenancy_foundation/migration.sql`, `prisma/workshop-tenancy-reset-runbook.md`, `src/prisma/workshop-tenancy-migration.spec.ts`, `src/prisma/workshop-tenancy-postgres.integration.spec.ts`, and this correction section in `openspec/changes/add-workshop-tenancy/apply-progress.md`. This restores the prior PR1 foundation behavior without touching Phase 2+ work. |
+
+### Correction Status
+
+- Static and build checks are green.
+- PostgreSQL runtime proof is green on a temporary local PostgreSQL 15 database; the temporary database was dropped after the suite.
+- Delivery strategy: `auto-chain`; chain strategy: `stacked-to-main`; PR boundary remains PR1 foundation correction only.

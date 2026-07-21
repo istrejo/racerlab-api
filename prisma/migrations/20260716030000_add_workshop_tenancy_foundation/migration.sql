@@ -1,3 +1,5 @@
+begin;
+
 do $$
 begin
   if exists (select 1 from public.customers)
@@ -252,41 +254,70 @@ create index repair_tasks_workshop_id_idx on public.repair_tasks (workshop_id);
 create index evidences_workshop_id_idx on public.evidences (workshop_id);
 create index comments_workshop_id_idx on public.comments (workshop_id);
 
+create or replace function public.assert_workshop_owner_membership(affected_workshop_id uuid)
+returns void
+language plpgsql
+as $$
+declare
+  owner_membership_count integer;
+  matching_owner_membership_count integer;
+begin
+  -- Serialize deferred checks for the same workshop so concurrent commits cannot each
+  -- observe a different owner set and both succeed.
+  perform 1
+    from public.workshops workshops
+   where workshops.id = affected_workshop_id
+     for update;
+
+  select count(*)
+    into owner_membership_count
+    from public.memberships memberships
+    join public.roles roles on roles.id = memberships.role_id
+   where memberships.workshop_id = affected_workshop_id
+     and memberships.is_active = true
+     and memberships.revoked_at is null
+     and roles.name::text = 'OWNER';
+
+  select count(*)
+    into matching_owner_membership_count
+    from public.memberships memberships
+    join public.roles roles on roles.id = memberships.role_id
+    join public.workshops workshops on workshops.id = memberships.workshop_id
+   where memberships.workshop_id = affected_workshop_id
+     and memberships.user_id = workshops.owner_user_id
+     and memberships.is_active = true
+     and memberships.revoked_at is null
+     and roles.name::text = 'OWNER';
+
+  if owner_membership_count <> 1 or matching_owner_membership_count <> 1 then
+    raise exception 'Each workshop must keep exactly one active OWNER membership matching owner_user_id.';
+  end if;
+end;
+$$;
+
 create or replace function public.enforce_workshop_owner_membership()
 returns trigger
 language plpgsql
 as $$
 declare
-  owner_membership_count integer;
+  old_workshop_id uuid;
+  new_workshop_id uuid;
 begin
   if tg_table_name = 'workshops' then
-    select count(*)
-      into owner_membership_count
-      from public.memberships memberships
-      join public.roles roles on roles.id = memberships.role_id
-     where memberships.workshop_id = coalesce(new.id, old.id)
-       and memberships.user_id = coalesce(new.owner_user_id, old.owner_user_id)
-       and memberships.is_active = true
-       and memberships.revoked_at is null
-       and roles.name = 'OWNER';
+    new_workshop_id := NEW.id;
+    perform public.assert_workshop_owner_membership(new_workshop_id);
+    return null;
+  end if;
 
-    if owner_membership_count <> 1 then
-      raise exception 'Each workshop must keep exactly one active OWNER membership matching owner_user_id.';
-    end if;
-  elsif tg_table_name = 'memberships' then
-    select count(*)
-      into owner_membership_count
-      from public.memberships memberships
-      join public.roles roles on roles.id = memberships.role_id
-      join public.workshops workshops on workshops.id = memberships.workshop_id
-     where workshops.id = coalesce(new.workshop_id, old.workshop_id)
-       and workshops.owner_user_id = memberships.user_id
-       and memberships.is_active = true
-       and memberships.revoked_at is null
-       and roles.name = 'OWNER';
+  if tg_op <> 'INSERT' then
+    old_workshop_id := OLD.workshop_id;
+    perform public.assert_workshop_owner_membership(old_workshop_id);
+  end if;
 
-    if owner_membership_count <> 1 then
-      raise exception 'Each workshop must keep exactly one active OWNER membership matching owner_user_id.';
+  if tg_op <> 'DELETE' then
+    new_workshop_id := NEW.workshop_id;
+    if tg_op = 'INSERT' or new_workshop_id is distinct from old_workshop_id then
+      perform public.assert_workshop_owner_membership(new_workshop_id);
     end if;
   end if;
 
@@ -307,3 +338,5 @@ after insert or update or delete on public.memberships
 deferrable initially deferred
 for each row
 execute function public.enforce_workshop_owner_membership();
+
+commit;

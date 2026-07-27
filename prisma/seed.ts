@@ -2,6 +2,11 @@ import { PrismaClient, UserRole } from '@prisma/client';
 
 export const BOOTSTRAP_ROLES = [
   {
+    name: UserRole.OWNER,
+    description:
+      'Workshop owner with every administrative permission and ownership transfer authority.',
+  },
+  {
     name: UserRole.ADMIN,
     description: 'Bootstrap administrator role for initial setup.',
   },

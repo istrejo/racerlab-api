@@ -9,6 +9,7 @@ datasource db {
 }
 
 enum UserRole {
+  OWNER
   ADMIN
   MANAGER
   ADVISOR
@@ -121,7 +122,7 @@ model Role {
   id          String           @id @default(uuid()) @db.Uuid
   name        UserRole         @unique
   description String?
-  users       User[]
+  memberships Membership[]
   permissions RolePermission[]
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
@@ -152,50 +153,105 @@ model RolePermission {
 }
 
 model User {
-  id                         String                      @id @default(uuid()) @db.Uuid
-  roleId                     String                      @map("role_id") @db.Uuid
-  role                       Role                        @relation(fields: [roleId], references: [id])
-  name                       String
-  email                      String                      @unique
-  passwordHash               String                      @map("password_hash")
-  isActive                   Boolean                     @default(true) @map("is_active")
-  createdAt                  DateTime                    @default(now()) @map("created_at")
-  updatedAt                  DateTime                    @updatedAt @map("updated_at")
-  createdServiceOrders       ServiceOrder[]              @relation("ServiceOrderCreatedBy")
-  assignedServiceOrders      ServiceOrder[]              @relation("ServiceOrderAssignedTechnician")
-  technicianAssignments      ServiceOrderTechnician[]    @relation("ServiceOrderTechnicianTechnician")
-  assignedTechnicians        ServiceOrderTechnician[]    @relation("ServiceOrderTechnicianAssignedBy")
-  statusChanges              ServiceOrderStatusHistory[]
-  diagnoses                  Diagnosis[]
-  quotes                     Quote[]
-  inventoryMovements         InventoryMovement[]
-  repairTasks                RepairTask[]
-  authSessions               AuthSession[]
-  evidences                  Evidence[]
-  comments                   Comment[]
+  id                 String        @id @default(uuid()) @db.Uuid
+  name               String
+  email              String        @unique
+  passwordHash       String        @map("password_hash")
+  isActive           Boolean       @default(true) @map("is_active")
+  mustChangePassword Boolean       @default(false) @map("must_change_password")
+  memberships        Membership[]
+  ownedWorkshops     Workshop[]    @relation("WorkshopOwner")
+  authSessions       AuthSession[]
+  createdAt          DateTime      @default(now()) @map("created_at")
+  updatedAt          DateTime      @updatedAt @map("updated_at")
 
-  @@index([roleId], map: "users_role_id_idx")
   @@map("users")
 }
 
+model Workshop {
+  id                  String                      @id @default(uuid()) @db.Uuid
+  name                String
+  ownerUserId         String                      @map("owner_user_id") @db.Uuid
+  ownerUser           User                        @relation("WorkshopOwner", fields: [ownerUserId], references: [id])
+  memberships         Membership[]
+  customers           Customer[]
+  vehicles            Vehicle[]
+  serviceOrders       ServiceOrder[]
+  technicians         ServiceOrderTechnician[]
+  statusHistory       ServiceOrderStatusHistory[]
+  diagnoses           Diagnosis[]
+  quotes              Quote[]
+  quoteItems          QuoteItem[]
+  inventoryCategories InventoryCategory[]
+  inventoryProducts   InventoryProduct[]
+  inventoryMovements  InventoryMovement[]
+  repairTasks         RepairTask[]
+  evidences           Evidence[]
+  comments            Comment[]
+  createdAt           DateTime                    @default(now()) @map("created_at")
+  updatedAt           DateTime                    @updatedAt @map("updated_at")
+
+  @@index([ownerUserId], map: "workshops_owner_user_id_idx")
+  @@map("workshops")
+}
+
+model Membership {
+  id                    String                      @id @default(uuid()) @db.Uuid
+  workshopId            String                      @map("workshop_id") @db.Uuid
+  workshop              Workshop                    @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  userId                String                      @map("user_id") @db.Uuid
+  user                  User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId                String                      @map("role_id") @db.Uuid
+  role                  Role                        @relation(fields: [roleId], references: [id])
+  displayName           String                      @map("display_name")
+  phone                 String?
+  address               String?
+  isActive              Boolean                     @default(true) @map("is_active")
+  deactivatedAt         DateTime?                   @map("deactivated_at")
+  authSessions          AuthSession[]
+  createdServiceOrders  ServiceOrder[]              @relation("ServiceOrderCreatedBy")
+  assignedServiceOrders ServiceOrder[]              @relation("ServiceOrderAssignedTechnician")
+  technicianAssignments ServiceOrderTechnician[]    @relation("ServiceOrderTechnicianTechnician")
+  assignedTechnicians   ServiceOrderTechnician[]    @relation("ServiceOrderTechnicianAssignedBy")
+  statusChanges         ServiceOrderStatusHistory[]
+  diagnoses             Diagnosis[]
+  quotes                Quote[]
+  inventoryMovements    InventoryMovement[]
+  repairTasks           RepairTask[]
+  evidences             Evidence[]
+  comments              Comment[]
+  createdAt             DateTime                    @default(now()) @map("created_at")
+  updatedAt             DateTime                    @updatedAt @map("updated_at")
+
+  @@unique([workshopId, userId], map: "memberships_workshop_id_user_id_key")
+  @@unique([workshopId, id], map: "memberships_workshop_id_id_key")
+  @@unique([id, userId], map: "memberships_id_user_id_key")
+  @@index([roleId], map: "memberships_role_id_idx")
+  @@index([workshopId, isActive], map: "memberships_workshop_id_is_active_idx")
+  @@map("memberships")
+}
+
 model AuthSession {
-  id                  String    @id @default(uuid()) @db.Uuid
-  userId              String    @map("user_id") @db.Uuid
-  tokenFamilyId       String    @map("token_family_id") @db.Uuid
-  tokenHash           String    @unique(map: "auth_sessions_token_hash_key") @map("token_hash")
-  expiresAt           DateTime  @map("expires_at")
-  consumedAt          DateTime? @map("consumed_at")
-  revokedAt           DateTime? @map("revoked_at")
-  replacedBySessionId String?   @map("replaced_by_session_id") @db.Uuid
-  createdUserAgent    String?   @map("created_user_agent")
-  createdIp           String?   @map("created_ip")
-  lastUsedUserAgent   String?   @map("last_used_user_agent")
-  lastUsedIp          String?   @map("last_used_ip")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
-  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                  String      @id @default(uuid()) @db.Uuid
+  userId              String      @map("user_id") @db.Uuid
+  activeMembershipId  String?     @map("active_membership_id") @db.Uuid
+  tokenFamilyId       String      @map("token_family_id") @db.Uuid
+  tokenHash           String      @unique(map: "auth_sessions_token_hash_key") @map("token_hash")
+  expiresAt           DateTime    @map("expires_at")
+  consumedAt          DateTime?   @map("consumed_at")
+  revokedAt           DateTime?   @map("revoked_at")
+  replacedBySessionId String?     @map("replaced_by_session_id") @db.Uuid
+  createdUserAgent    String?     @map("created_user_agent")
+  createdIp           String?     @map("created_ip")
+  lastUsedUserAgent   String?     @map("last_used_user_agent")
+  lastUsedIp          String?     @map("last_used_ip")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeMembership    Membership? @relation(fields: [activeMembershipId, userId], references: [id, userId])
 
   @@index([userId], map: "auth_sessions_user_id_idx")
+  @@index([activeMembershipId], map: "auth_sessions_active_membership_id_idx")
   @@index([tokenFamilyId], map: "auth_sessions_token_family_id_idx")
   @@index([expiresAt], map: "auth_sessions_expires_at_idx")
   @@map("auth_sessions")
@@ -203,6 +259,8 @@ model AuthSession {
 
 model Customer {
   id            String         @id @default(uuid()) @db.Uuid
+  workshopId    String         @map("workshop_id") @db.Uuid
+  workshop      Workshop       @relation(fields: [workshopId], references: [id])
   fullName      String         @map("full_name")
   phone         String?
   whatsapp      String?
@@ -215,14 +273,18 @@ model Customer {
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
+  @@unique([workshopId, id], map: "customers_workshop_id_id_key")
+  @@index([workshopId, fullName], map: "customers_workshop_id_full_name_idx")
   @@map("customers")
 }
 
 model Vehicle {
   id            String         @id @default(uuid()) @db.Uuid
+  workshopId    String         @map("workshop_id") @db.Uuid
+  workshop      Workshop       @relation(fields: [workshopId], references: [id])
   customerId    String         @map("customer_id") @db.Uuid
-  customer      Customer       @relation(fields: [customerId], references: [id])
-  plate         String         @unique
+  customer      Customer       @relation(fields: [workshopId, customerId], references: [workshopId, id])
+  plate         String
   brand         String
   model         String
   year          Int?
@@ -235,21 +297,25 @@ model Vehicle {
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
-  @@index([customerId], map: "vehicles_customer_id_idx")
+  @@unique([workshopId, id], map: "vehicles_workshop_id_id_key")
+  @@unique([workshopId, plate], map: "vehicles_workshop_id_plate_key")
+  @@index([workshopId, customerId], map: "vehicles_workshop_id_customer_id_idx")
   @@map("vehicles")
 }
 
 model ServiceOrder {
   id                    String                      @id @default(uuid()) @db.Uuid
-  code                  String                      @unique
+  workshopId            String                      @map("workshop_id") @db.Uuid
+  workshop              Workshop                    @relation(fields: [workshopId], references: [id])
+  code                  String
   customerId            String                      @map("customer_id") @db.Uuid
-  customer              Customer                    @relation(fields: [customerId], references: [id])
+  customer              Customer                    @relation(fields: [workshopId, customerId], references: [workshopId, id])
   vehicleId             String                      @map("vehicle_id") @db.Uuid
-  vehicle               Vehicle                     @relation(fields: [vehicleId], references: [id])
+  vehicle               Vehicle                     @relation(fields: [workshopId, vehicleId], references: [workshopId, id])
   assignedTechnicianId  String?                     @map("assigned_technician_id") @db.Uuid
-  assignedTechnician    User?                       @relation("ServiceOrderAssignedTechnician", fields: [assignedTechnicianId], references: [id])
+  assignedTechnician    Membership?                 @relation("ServiceOrderAssignedTechnician", fields: [workshopId, assignedTechnicianId], references: [workshopId, userId])
   createdById           String                      @map("created_by_id") @db.Uuid
-  createdBy             User                        @relation("ServiceOrderCreatedBy", fields: [createdById], references: [id])
+  createdBy             Membership                  @relation("ServiceOrderCreatedBy", fields: [workshopId, createdById], references: [workshopId, userId])
   status                ServiceOrderStatus          @default(RECEIVED)
   priority              ServiceOrderPriority?       @default(NORMAL)
   reportedIssues        String?                     @map("reported_issues")
@@ -272,67 +338,78 @@ model ServiceOrder {
   createdAt             DateTime                    @default(now()) @map("created_at")
   updatedAt             DateTime                    @updatedAt @map("updated_at")
 
-  @@index([customerId], map: "service_orders_customer_id_idx")
-  @@index([vehicleId], map: "service_orders_vehicle_id_idx")
-  @@index([assignedTechnicianId], map: "service_orders_assigned_technician_id_idx")
-  @@index([createdById], map: "service_orders_created_by_id_idx")
+  @@unique([workshopId, id], map: "service_orders_workshop_id_id_key")
+  @@unique([workshopId, code], map: "service_orders_workshop_id_code_key")
+  @@index([workshopId, customerId], map: "service_orders_workshop_id_customer_id_idx")
+  @@index([workshopId, vehicleId], map: "service_orders_workshop_id_vehicle_id_idx")
+  @@index([workshopId, assignedTechnicianId], map: "service_orders_workshop_id_assigned_technician_id_idx")
+  @@index([workshopId, createdById], map: "service_orders_workshop_id_created_by_id_idx")
+  @@index([workshopId, status, createdAt], map: "service_orders_workshop_id_status_created_at_idx")
   @@map("service_orders")
 }
 
 model ServiceOrderTechnician {
+  workshopId     String       @map("workshop_id") @db.Uuid
+  workshop       Workshop     @relation(fields: [workshopId], references: [id])
   serviceOrderId String       @map("service_order_id") @db.Uuid
-  serviceOrder   ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  serviceOrder   ServiceOrder @relation(fields: [workshopId, serviceOrderId], references: [workshopId, id], onDelete: Cascade)
   technicianId   String       @map("technician_id") @db.Uuid
-  technician     User         @relation("ServiceOrderTechnicianTechnician", fields: [technicianId], references: [id])
+  technician     Membership   @relation("ServiceOrderTechnicianTechnician", fields: [workshopId, technicianId], references: [workshopId, userId])
   assignedById   String?      @map("assigned_by_id") @db.Uuid
-  assignedBy     User?        @relation("ServiceOrderTechnicianAssignedBy", fields: [assignedById], references: [id])
+  assignedBy     Membership?  @relation("ServiceOrderTechnicianAssignedBy", fields: [workshopId, assignedById], references: [workshopId, userId])
   assignedAt     DateTime     @default(now()) @map("assigned_at")
 
-  @@id([serviceOrderId, technicianId])
-  @@index([technicianId], map: "service_order_technicians_technician_id_idx")
-  @@index([assignedById], map: "service_order_technicians_assigned_by_id_idx")
+  @@id([workshopId, serviceOrderId, technicianId])
+  @@index([workshopId, technicianId], map: "service_order_technicians_workshop_id_technician_id_idx")
+  @@index([workshopId, assignedById], map: "service_order_technicians_workshop_id_assigned_by_id_idx")
   @@map("service_order_technicians")
 }
 
 model ServiceOrderStatusHistory {
   id             String              @id @default(uuid()) @db.Uuid
+  workshopId     String              @map("workshop_id") @db.Uuid
+  workshop       Workshop            @relation(fields: [workshopId], references: [id])
   serviceOrderId String              @map("service_order_id") @db.Uuid
-  serviceOrder   ServiceOrder        @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  serviceOrder   ServiceOrder        @relation(fields: [workshopId, serviceOrderId], references: [workshopId, id], onDelete: Cascade)
   previousStatus ServiceOrderStatus? @map("previous_status")
   newStatus      ServiceOrderStatus  @map("new_status")
   changedById    String              @map("changed_by_id") @db.Uuid
-  changedBy      User                @relation(fields: [changedById], references: [id])
+  changedBy      Membership          @relation(fields: [workshopId, changedById], references: [workshopId, userId])
   comment        String?
   createdAt      DateTime            @default(now()) @map("created_at")
 
-  @@index([serviceOrderId], map: "service_order_status_history_service_order_id_idx")
-  @@index([changedById], map: "service_order_status_history_changed_by_id_idx")
+  @@index([workshopId, serviceOrderId], map: "service_order_status_history_workshop_id_service_order_id_idx")
+  @@index([workshopId, changedById], map: "service_order_status_history_workshop_id_changed_by_id_idx")
   @@map("service_order_status_history")
 }
 
 model Diagnosis {
   id                 String       @id @default(uuid()) @db.Uuid
+  workshopId         String       @map("workshop_id") @db.Uuid
+  workshop           Workshop     @relation(fields: [workshopId], references: [id])
   serviceOrderId     String       @map("service_order_id") @db.Uuid
-  serviceOrder       ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  serviceOrder       ServiceOrder @relation(fields: [workshopId, serviceOrderId], references: [workshopId, id], onDelete: Cascade)
   technicianId       String       @map("technician_id") @db.Uuid
-  technician         User         @relation(fields: [technicianId], references: [id])
+  technician         Membership   @relation(fields: [workshopId, technicianId], references: [workshopId, userId])
   description        String
   requiredPartsNotes String?      @map("required_parts_notes")
   suggestedLabor     String?      @map("suggested_labor")
   createdAt          DateTime     @default(now()) @map("created_at")
   updatedAt          DateTime     @updatedAt @map("updated_at")
 
-  @@index([serviceOrderId], map: "diagnoses_service_order_id_idx")
-  @@index([technicianId], map: "diagnoses_technician_id_idx")
+  @@index([workshopId, serviceOrderId], map: "diagnoses_workshop_id_service_order_id_idx")
+  @@index([workshopId, technicianId], map: "diagnoses_workshop_id_technician_id_idx")
   @@map("diagnoses")
 }
 
 model Quote {
   id             String       @id @default(uuid()) @db.Uuid
+  workshopId     String       @map("workshop_id") @db.Uuid
+  workshop       Workshop     @relation(fields: [workshopId], references: [id])
   serviceOrderId String       @map("service_order_id") @db.Uuid
-  serviceOrder   ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  serviceOrder   ServiceOrder @relation(fields: [workshopId, serviceOrderId], references: [workshopId, id], onDelete: Cascade)
   createdById    String       @map("created_by_id") @db.Uuid
-  createdBy      User         @relation(fields: [createdById], references: [id])
+  createdBy      Membership   @relation(fields: [workshopId, createdById], references: [workshopId, userId])
   status         QuoteStatus  @default(DRAFT)
   subtotal       Decimal      @default(0) @db.Decimal(12, 2)
   discount       Decimal?     @db.Decimal(12, 2)
@@ -345,17 +422,20 @@ model Quote {
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
-  @@index([serviceOrderId], map: "quotes_service_order_id_idx")
-  @@index([createdById], map: "quotes_created_by_id_idx")
+  @@unique([workshopId, id], map: "quotes_workshop_id_id_key")
+  @@index([workshopId, serviceOrderId], map: "quotes_workshop_id_service_order_id_idx")
+  @@index([workshopId, createdById], map: "quotes_workshop_id_created_by_id_idx")
   @@map("quotes")
 }
 
 model QuoteItem {
   id                 String            @id @default(uuid()) @db.Uuid
+  workshopId         String            @map("workshop_id") @db.Uuid
+  workshop           Workshop          @relation(fields: [workshopId], references: [id])
   quoteId            String            @map("quote_id") @db.Uuid
-  quote              Quote             @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quote              Quote             @relation(fields: [workshopId, quoteId], references: [workshopId, id], onDelete: Cascade)
   inventoryProductId String?           @map("inventory_product_id") @db.Uuid
-  inventoryProduct   InventoryProduct? @relation(fields: [inventoryProductId], references: [id])
+  inventoryProduct   InventoryProduct? @relation(fields: [workshopId, inventoryProductId], references: [workshopId, id])
   type               QuoteItemType
   description        String
   quantity           Decimal           @db.Decimal(12, 3)
@@ -366,29 +446,35 @@ model QuoteItem {
   createdAt          DateTime          @default(now()) @map("created_at")
   updatedAt          DateTime          @updatedAt @map("updated_at")
 
-  @@index([quoteId], map: "quote_items_quote_id_idx")
-  @@index([inventoryProductId], map: "quote_items_inventory_product_id_idx")
+  @@index([workshopId, quoteId], map: "quote_items_workshop_id_quote_id_idx")
+  @@index([workshopId, inventoryProductId], map: "quote_items_workshop_id_inventory_product_id_idx")
   @@map("quote_items")
 }
 
 model InventoryCategory {
   id          String             @id @default(uuid()) @db.Uuid
-  name        String             @unique
+  workshopId  String             @map("workshop_id") @db.Uuid
+  workshop    Workshop           @relation(fields: [workshopId], references: [id])
+  name        String
   description String?
   isActive    Boolean            @default(true) @map("is_active")
   products    InventoryProduct[]
   createdAt   DateTime           @default(now()) @map("created_at")
   updatedAt   DateTime           @updatedAt @map("updated_at")
 
+  @@unique([workshopId, id], map: "inventory_categories_workshop_id_id_key")
+  @@unique([workshopId, name], map: "inventory_categories_workshop_id_name_key")
   @@map("inventory_categories")
 }
 
 model InventoryProduct {
   id                 String              @id @default(uuid()) @db.Uuid
+  workshopId         String              @map("workshop_id") @db.Uuid
+  workshop           Workshop            @relation(fields: [workshopId], references: [id])
   categoryId         String?             @map("category_id") @db.Uuid
-  category           InventoryCategory?  @relation(fields: [categoryId], references: [id])
+  category           InventoryCategory?  @relation(fields: [workshopId, categoryId], references: [workshopId, id])
   name               String
-  sku                String?             @unique
+  sku                String?
   brand              String?
   description        String?
   unit               ProductUnit
@@ -403,18 +489,22 @@ model InventoryProduct {
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
 
-  @@index([categoryId], map: "inventory_products_category_id_idx")
+  @@unique([workshopId, id], map: "inventory_products_workshop_id_id_key")
+  @@unique([workshopId, sku], map: "inventory_products_workshop_id_sku_key")
+  @@index([workshopId, categoryId], map: "inventory_products_workshop_id_category_id_idx")
   @@map("inventory_products")
 }
 
 model InventoryMovement {
   id             String                @id @default(uuid()) @db.Uuid
+  workshopId     String                @map("workshop_id") @db.Uuid
+  workshop       Workshop              @relation(fields: [workshopId], references: [id])
   productId      String                @map("product_id") @db.Uuid
-  product        InventoryProduct      @relation(fields: [productId], references: [id])
+  product        InventoryProduct      @relation(fields: [workshopId, productId], references: [workshopId, id])
   serviceOrderId String?               @map("service_order_id") @db.Uuid
-  serviceOrder   ServiceOrder?         @relation(fields: [serviceOrderId], references: [id])
+  serviceOrder   ServiceOrder?         @relation(fields: [workshopId, serviceOrderId], references: [workshopId, id])
   createdById    String                @map("created_by_id") @db.Uuid
-  createdBy      User                  @relation(fields: [createdById], references: [id])
+  createdBy      Membership            @relation(fields: [workshopId, createdById], references: [workshopId, userId])
   type           InventoryMovementType
   quantity       Decimal               @db.Decimal(12, 3)
   previousStock  Decimal?              @map("previous_stock") @db.Decimal(12, 3)
@@ -422,18 +512,20 @@ model InventoryMovement {
   notes          String?
   createdAt      DateTime              @default(now()) @map("created_at")
 
-  @@index([productId], map: "inventory_movements_product_id_idx")
-  @@index([serviceOrderId], map: "inventory_movements_service_order_id_idx")
-  @@index([createdById], map: "inventory_movements_created_by_id_idx")
+  @@index([workshopId, productId], map: "inventory_movements_workshop_id_product_id_idx")
+  @@index([workshopId, serviceOrderId], map: "inventory_movements_workshop_id_service_order_id_idx")
+  @@index([workshopId, createdById], map: "inventory_movements_workshop_id_created_by_id_idx")
   @@map("inventory_movements")
 }
 
 model RepairTask {
   id                   String           @id @default(uuid()) @db.Uuid
+  workshopId           String           @map("workshop_id") @db.Uuid
+  workshop             Workshop         @relation(fields: [workshopId], references: [id])
   serviceOrderId       String           @map("service_order_id") @db.Uuid
-  serviceOrder         ServiceOrder     @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  serviceOrder         ServiceOrder     @relation(fields: [workshopId, serviceOrderId], references: [workshopId, id], onDelete: Cascade)
   assignedTechnicianId String?          @map("assigned_technician_id") @db.Uuid
-  assignedTechnician   User?            @relation(fields: [assignedTechnicianId], references: [id])
+  assignedTechnician   Membership?      @relation(fields: [workshopId, assignedTechnicianId], references: [workshopId, userId])
   title                String
   description          String?
   status               RepairTaskStatus @default(PENDING)
@@ -442,17 +534,19 @@ model RepairTask {
   createdAt            DateTime         @default(now()) @map("created_at")
   updatedAt            DateTime         @updatedAt @map("updated_at")
 
-  @@index([serviceOrderId], map: "repair_tasks_service_order_id_idx")
-  @@index([assignedTechnicianId], map: "repair_tasks_assigned_technician_id_idx")
+  @@index([workshopId, serviceOrderId], map: "repair_tasks_workshop_id_service_order_id_idx")
+  @@index([workshopId, assignedTechnicianId], map: "repair_tasks_workshop_id_assigned_technician_id_idx")
   @@map("repair_tasks")
 }
 
 model Evidence {
   id             String        @id @default(uuid()) @db.Uuid
+  workshopId     String        @map("workshop_id") @db.Uuid
+  workshop       Workshop      @relation(fields: [workshopId], references: [id])
   serviceOrderId String        @map("service_order_id") @db.Uuid
-  serviceOrder   ServiceOrder  @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  serviceOrder   ServiceOrder  @relation(fields: [workshopId, serviceOrderId], references: [workshopId, id], onDelete: Cascade)
   uploadedById   String        @map("uploaded_by_id") @db.Uuid
-  uploadedBy     User          @relation(fields: [uploadedById], references: [id])
+  uploadedBy     Membership    @relation(fields: [workshopId, uploadedById], references: [workshopId, userId])
   stage          EvidenceStage
   fileUrl        String        @map("file_url")
   storagePath    String?       @map("storage_path")
@@ -461,23 +555,25 @@ model Evidence {
   metadata       Json?
   createdAt      DateTime      @default(now()) @map("created_at")
 
-  @@index([serviceOrderId], map: "evidences_service_order_id_idx")
-  @@index([uploadedById], map: "evidences_uploaded_by_id_idx")
+  @@index([workshopId, serviceOrderId], map: "evidences_workshop_id_service_order_id_idx")
+  @@index([workshopId, uploadedById], map: "evidences_workshop_id_uploaded_by_id_idx")
   @@map("evidences")
 }
 
 model Comment {
   id             String       @id @default(uuid()) @db.Uuid
+  workshopId     String       @map("workshop_id") @db.Uuid
+  workshop       Workshop     @relation(fields: [workshopId], references: [id])
   serviceOrderId String       @map("service_order_id") @db.Uuid
-  serviceOrder   ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  serviceOrder   ServiceOrder @relation(fields: [workshopId, serviceOrderId], references: [workshopId, id], onDelete: Cascade)
   userId         String       @map("user_id") @db.Uuid
-  user           User         @relation(fields: [userId], references: [id])
+  user           Membership   @relation(fields: [workshopId, userId], references: [workshopId, userId])
   content        String
   isInternal     Boolean      @default(true) @map("is_internal")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
-  @@index([serviceOrderId], map: "comments_service_order_id_idx")
-  @@index([userId], map: "comments_user_id_idx")
+  @@index([workshopId, serviceOrderId], map: "comments_workshop_id_service_order_id_idx")
+  @@index([workshopId, userId], map: "comments_workshop_id_user_id_idx")
   @@map("comments")
 }

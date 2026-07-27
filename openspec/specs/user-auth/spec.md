@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define login and JWT access-token authentication for active internal users.
+Define login and JWT access-token authentication for global users with live workshop membership context.
 
 ## Requirements
 
@@ -30,19 +30,51 @@ The system MUST accept `POST /auth/login` with email and password, normalize ema
 
 ### Requirement: Current User Revalidation
 
-The system MUST validate protected JWTs against the current database record for the referenced user, and stale token claims MUST NOT grant access after deactivation or role change.
+The system MUST validate protected JWTs against the current auth session, global user, and active membership. Workshop and role authority MUST be loaded from current database state, and stale claims MUST NOT grant access after session, user, membership, workshop, or role changes.
 
 #### Scenario: Accept token for a current active user
 
 - GIVEN a valid JWT references an active stored user
 - WHEN the token is used on a protected endpoint
-- THEN the request is authenticated as that current user
+- THEN the request is authenticated as that current user and current membership
 
 #### Scenario: Reject stale claims after user state changes
 
-- GIVEN a valid JWT references a user who is now inactive or no longer allowed
+- GIVEN a valid JWT references a revoked session, inactive user, inactive membership, or stale workshop context
 - WHEN the token is used on a protected endpoint
 - THEN the request is denied
+
+### Requirement: Mandatory First-Access Password Change
+
+Users created manually MUST be marked as requiring a password change. Login and refresh MUST expose that state, and protected requests MUST resolve it from the current user row rather than trusting a JWT claim. Every private endpoint except password change and logout-all MUST respond with `403 PASSWORD_CHANGE_REQUIRED` while the flag is active.
+
+#### Scenario: Block a temporary-password user
+
+- GIVEN a manually created user logs in with the administrator-issued password
+- WHEN the user calls a private business endpoint
+- THEN access is denied with `PASSWORD_CHANGE_REQUIRED`
+
+#### Scenario: Replace the temporary password
+
+- GIVEN an authenticated user is required to change their password
+- WHEN `POST /auth/change-password` receives the valid current password and a different valid new password
+- THEN only the Argon2 hash is stored, the requirement is cleared, every other session is revoked, and the current session may access private resources
+
+#### Scenario: Reject password reuse
+
+- GIVEN an authenticated user submits the current password as the new password
+- WHEN the password-change endpoint validates the request
+- THEN the change is rejected and the existing credential remains unchanged
+
+### Requirement: Workshop Selection
+
+The system MUST bind each auth session to zero or one active membership. Login MUST select the membership automatically only when exactly one is active; otherwise the session remains neutral until `POST /auth/select-workshop` validates and stores a membership owned by the user.
+
+#### Scenario: Invalidate stale context after selection
+
+- GIVEN a neutral or workshop-bound session has an access token
+- WHEN its active membership changes
+- THEN a replacement access token is issued and the previous context no longer authenticates
 
 ### Requirement: Refresh Session Rotation
 

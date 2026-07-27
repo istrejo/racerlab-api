@@ -10,6 +10,8 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
@@ -19,13 +21,18 @@ import {
 } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../../common/auth/authenticated-user';
 import type { Request, Response } from 'express';
+import { AllowPasswordChangeRequired } from '../../common/decorators/allow-password-change-required.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { getAuthConfig } from '../../config/auth.config';
 import { AuthService } from './auth.service';
+import { RefreshCookieService } from './refresh-cookie.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { RefreshResponseDto } from './dto/refresh-response.dto';
+import { SelectWorkshopDto } from './dto/select-workshop.dto';
+import { SignupDto } from './dto/signup.dto';
 
 const REFRESH_COOKIE_HEADER = {
   'Set-Cookie': {
@@ -42,7 +49,50 @@ const REFRESH_COOKIE_HEADER = {
 export class AuthController {
   private readonly authConfig = getAuthConfig();
 
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly refreshCookieService: RefreshCookieService,
+  ) {}
+
+  @Post('signup')
+  @ApiOperation({
+    summary: 'Create a global user identity and start a neutral session',
+    description:
+      'Registers a user without workshop memberships, returns an access token, and issues an HttpOnly refresh cookie. The authenticated user can then create their first workshop.',
+  })
+  @ApiCreatedResponse({
+    type: LoginResponseDto,
+    headers: REFRESH_COOKIE_HEADER,
+  })
+  @ApiBadRequestResponse({ description: 'Invalid signup payload.' })
+  @ApiConflictResponse({ description: 'Email is already registered.' })
+  @ApiServiceUnavailableResponse({
+    description: 'Authentication service temporarily unavailable.',
+  })
+  async signup(
+    @Body() dto: SignupDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<LoginResponseDto> {
+    const session = await this.authService.signup(
+      dto,
+      this.getRequestContext(request),
+    );
+
+    this.refreshCookieService.set(
+      response,
+      session.refreshToken,
+      session.refreshTokenExpiresAt,
+    );
+
+    return {
+      accessToken: session.accessToken,
+      tokenType: session.tokenType,
+      activeWorkshop: session.activeWorkshop,
+      requiresWorkshopSelection: session.requiresWorkshopSelection,
+      requiresPasswordChange: session.requiresPasswordChange,
+    };
+  }
 
   @Post('login')
   @HttpCode(200)
@@ -65,13 +115,23 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<LoginResponseDto> {
-    const session = await this.authService.login(dto, this.getRequestContext(request));
+    const session = await this.authService.login(
+      dto,
+      this.getRequestContext(request),
+    );
 
-    this.setRefreshCookie(response, session.refreshToken, session.refreshTokenExpiresAt);
+    this.refreshCookieService.set(
+      response,
+      session.refreshToken,
+      session.refreshTokenExpiresAt,
+    );
 
     return {
       accessToken: session.accessToken,
       tokenType: session.tokenType,
+      activeWorkshop: session.activeWorkshop,
+      requiresWorkshopSelection: session.requiresWorkshopSelection,
+      requiresPasswordChange: session.requiresPasswordChange,
     };
   }
 
@@ -94,20 +154,77 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<RefreshResponseDto> {
-    const refreshToken = request.cookies?.[this.authConfig.refreshCookie.name] as
-      | string
-      | undefined;
+    const refreshToken = request.cookies?.[
+      this.authConfig.refreshCookie.name
+    ] as string | undefined;
     const session = await this.authService.refresh(
       refreshToken,
       this.getRequestContext(request),
     );
 
-    this.setRefreshCookie(response, session.refreshToken, session.refreshTokenExpiresAt);
+    this.refreshCookieService.set(
+      response,
+      session.refreshToken,
+      session.refreshTokenExpiresAt,
+    );
 
     return {
       accessToken: session.accessToken,
       tokenType: session.tokenType,
+      activeWorkshop: session.activeWorkshop,
+      requiresWorkshopSelection: session.requiresWorkshopSelection,
+      requiresPasswordChange: session.requiresPasswordChange,
     };
+  }
+
+  @Post('select-workshop')
+  @HttpCode(200)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Select an active workshop for the current session',
+  })
+  @ApiOkResponse({ type: LoginResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'The workshop membership is not available.',
+  })
+  @UseGuards(JwtAuthGuard)
+  selectWorkshop(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SelectWorkshopDto,
+  ): Promise<LoginResponseDto> {
+    return this.authService.selectWorkshop(user, dto.workshopId);
+  }
+
+  @Post('change-password')
+  @HttpCode(204)
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Replace the current or administrator-issued password',
+  })
+  @ApiNoContentResponse({
+    description:
+      'The password was changed and every other active session was revoked.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'The current password is invalid.',
+  })
+  @ApiBadRequestResponse({
+    description: 'The new password is invalid or was already in use.',
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'Authentication service temporarily unavailable.',
+  })
+  @UseGuards(JwtAuthGuard)
+  @AllowPasswordChangeRequired()
+  changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    return this.authService.changePassword(
+      user,
+      dto.currentPassword,
+      dto.newPassword,
+    );
   }
 
   @Post('logout')
@@ -129,12 +246,15 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
-    const refreshToken = request.cookies?.[this.authConfig.refreshCookie.name] as
-      | string
-      | undefined;
+    const refreshToken = request.cookies?.[
+      this.authConfig.refreshCookie.name
+    ] as string | undefined;
 
-    await this.authService.logout(refreshToken, this.getRequestContext(request));
-    this.clearRefreshCookie(response);
+    await this.authService.logout(
+      refreshToken,
+      this.getRequestContext(request),
+    );
+    this.refreshCookieService.clear(response);
   }
 
   @Post('logout-all')
@@ -155,12 +275,13 @@ export class AuthController {
     description: 'Authentication service temporarily unavailable.',
   })
   @UseGuards(JwtAuthGuard)
+  @AllowPasswordChangeRequired()
   async logoutAll(
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     await this.authService.logoutAll(user.id);
-    this.clearRefreshCookie(response);
+    this.refreshCookieService.clear(response);
   }
 
   private getRequestContext(request: Request) {
@@ -168,33 +289,5 @@ export class AuthController {
       userAgent: request.get('user-agent') ?? undefined,
       ipAddress: request.ip,
     };
-  }
-
-  private setRefreshCookie(
-    response: Response,
-    refreshToken: string,
-    expiresAt: Date,
-  ) {
-    response.cookie(this.authConfig.refreshCookie.name, refreshToken, {
-      httpOnly: this.authConfig.refreshCookie.httpOnly,
-      path: this.authConfig.refreshCookie.path,
-      secure: this.authConfig.refreshCookie.secure,
-      sameSite: this.authConfig.refreshCookie.sameSite,
-      domain: this.authConfig.refreshCookie.domain,
-      expires: expiresAt,
-      maxAge: Math.max(expiresAt.getTime() - Date.now(), 0),
-    });
-  }
-
-  private clearRefreshCookie(response: Response) {
-    response.cookie(this.authConfig.refreshCookie.name, '', {
-      httpOnly: this.authConfig.refreshCookie.httpOnly,
-      path: this.authConfig.refreshCookie.path,
-      secure: this.authConfig.refreshCookie.secure,
-      sameSite: this.authConfig.refreshCookie.sameSite,
-      domain: this.authConfig.refreshCookie.domain,
-      expires: new Date(0),
-      maxAge: 0,
-    });
   }
 }

@@ -5,7 +5,9 @@ import { getAuthConfig } from '../../config/auth.config';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export type CreateAuthSessionInput = {
+  sessionId?: string;
   userId: string;
+  activeMembershipId?: string;
   refreshToken: string;
   expiresAt: Date;
   tokenFamilyId?: string;
@@ -61,7 +63,9 @@ export class AuthSessionService {
     const prisma = input.prisma ?? this.prisma;
     const session = await this.createSession(
       {
+        sessionId: input.sessionId,
         userId: input.userId,
+        activeMembershipId: input.activeMembershipId,
         refreshToken,
         expiresAt,
         tokenFamilyId: input.tokenFamilyId,
@@ -86,7 +90,9 @@ export class AuthSessionService {
 
     return prisma.authSession.create({
       data: {
+        id: input.sessionId,
         userId: input.userId,
+        activeMembershipId: input.activeMembershipId,
         tokenFamilyId,
         tokenHash: this.hashToken(input.refreshToken),
         expiresAt: input.expiresAt,
@@ -105,10 +111,17 @@ export class AuthSessionService {
       },
       include: {
         user: {
+          select: {
+            id: true,
+            email: true,
+            isActive: true,
+            mustChangePassword: true,
+          },
+        },
+        activeMembership: {
           include: {
-            role: {
-              select: { name: true },
-            },
+            role: { select: { name: true } },
+            workshop: { select: { id: true, name: true } },
           },
         },
       },
@@ -125,10 +138,17 @@ export class AuthSessionService {
       },
       include: {
         user: {
+          select: {
+            id: true,
+            email: true,
+            isActive: true,
+            mustChangePassword: true,
+          },
+        },
+        activeMembership: {
           include: {
-            role: {
-              select: { name: true },
-            },
+            role: { select: { name: true } },
+            workshop: { select: { id: true, name: true } },
           },
         },
       },

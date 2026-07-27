@@ -98,6 +98,12 @@ The system MUST accept `POST /auth/refresh` only with a valid HttpOnly refresh c
 - WHEN the client calls `POST /auth/refresh`
 - THEN the response is unauthenticated and that token family is no longer refreshable
 
+#### Scenario: A concurrent duplicate does not revoke the replacement
+
+- GIVEN two refresh requests read the same active refresh session before either one consumes it
+- WHEN one request completes the rotation and the other loses the guarded consume
+- THEN the losing request is unauthenticated, while the replacement issued to the winning request remains refreshable
+
 #### Scenario: Concurrent sessions stay independent
 
 - GIVEN the same active user has sessions from different user-agent or IP contexts

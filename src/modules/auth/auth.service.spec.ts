@@ -37,7 +37,10 @@ describe('AuthService workshop sessions', () => {
       update: jest.fn(),
     },
     membership: { findFirst: jest.fn() },
-    authSession: { updateMany: jest.fn() },
+    authSession: {
+      update: jest.fn(),
+      updateMany: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
   let service: AuthService;
@@ -335,5 +338,72 @@ describe('AuthService workshop sessions', () => {
       ),
     );
     expect(passwordHasher.hash).not.toHaveBeenCalled();
+  });
+
+  it('does not revoke the replacement family when another refresh already in flight wins the rotation', async () => {
+    const refreshSession = {
+      id: sessionId,
+      userId,
+      tokenFamilyId: 'token-family-id',
+      expiresAt: new Date('2026-08-27T12:00:00.000Z'),
+      consumedAt: null,
+      revokedAt: null,
+      user: {
+        id: userId,
+        email: 'ada@example.com',
+        isActive: true,
+        mustChangePassword: false,
+      },
+      activeMembership: null,
+    };
+
+    authSessionService.findSessionByToken.mockResolvedValue(refreshSession);
+    prisma.authSession.updateMany.mockResolvedValue({ count: 0 });
+    prisma.$transaction.mockImplementation(
+      (callback: (tx: typeof prisma) => unknown) => callback(prisma),
+    );
+
+    await expect(service.refresh('old-refresh-token')).rejects.toEqual(
+      new UnauthorizedException('Invalid refresh session.'),
+    );
+
+    expect(prisma.authSession.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.authSession.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: sessionId }),
+      }),
+    );
+    expect(authSessionService.issueSession).not.toHaveBeenCalled();
+  });
+
+  it('revokes the family when a refresh token is replayed after its rotation completed', async () => {
+    authSessionService.findSessionByToken.mockResolvedValue({
+      id: sessionId,
+      userId,
+      tokenFamilyId: 'token-family-id',
+      expiresAt: new Date('2026-08-27T12:00:00.000Z'),
+      consumedAt: new Date('2026-07-27T12:00:00.000Z'),
+      revokedAt: null,
+      user: {
+        id: userId,
+        email: 'ada@example.com',
+        isActive: true,
+        mustChangePassword: false,
+      },
+      activeMembership: null,
+    });
+    prisma.authSession.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(service.refresh('replayed-refresh-token')).rejects.toEqual(
+      new UnauthorizedException('Invalid refresh session.'),
+    );
+
+    expect(prisma.authSession.updateMany).toHaveBeenCalledWith({
+      where: {
+        tokenFamilyId: 'token-family-id',
+        revokedAt: null,
+      },
+      data: { revokedAt: expect.any(Date) },
+    });
   });
 });

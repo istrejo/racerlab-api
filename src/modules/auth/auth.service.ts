@@ -219,7 +219,6 @@ export class AuthService {
       );
 
       if (!issuedSession) {
-        await this.revokeRefreshTokenFamily(session.tokenFamilyId, now);
         throw new UnauthorizedException('Invalid refresh session.');
       }
 

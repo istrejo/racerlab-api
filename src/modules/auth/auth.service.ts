@@ -18,6 +18,7 @@ import { AuthSessionService } from './auth-session.service';
 import { ActiveWorkshopResponseDto } from './dto/active-workshop-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
+import { MeResponseDto } from './dto/me-response.dto';
 import { SignupDto } from './dto/signup.dto';
 
 export type AuthRequestContext = {
@@ -254,6 +255,76 @@ export class AuthService {
     }
 
     return this.activateMembershipForSession(user, membership);
+  }
+
+  async getMe(user: AuthenticatedUser): Promise<MeResponseDto> {
+    try {
+      const session = await this.prisma.authSession.findFirst({
+        where: {
+          id: user.sessionId,
+          userId: user.id,
+          consumedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        select: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              isActive: true,
+              mustChangePassword: true,
+            },
+          },
+          activeMembership: {
+            select: {
+              id: true,
+              workshopId: true,
+              displayName: true,
+              phone: true,
+              address: true,
+              isActive: true,
+              role: { select: { name: true } },
+              workshop: { select: { id: true, name: true } },
+            },
+          },
+        },
+      });
+
+      if (
+        !session?.user.isActive ||
+        session.activeMembership?.isActive === false
+      ) {
+        throw new UnauthorizedException('Invalid access session.');
+      }
+
+      const membership = session.activeMembership;
+
+      return {
+        user: {
+          id: session.user.id,
+          name: session.user.name,
+          email: session.user.email,
+        },
+        activeWorkshop: membership
+          ? {
+              workshopId: membership.workshopId,
+              membershipId: membership.id,
+              name: membership.workshop.name,
+              role: membership.role.name,
+              profile: {
+                displayName: membership.displayName,
+                phone: membership.phone,
+                address: membership.address,
+              },
+            }
+          : null,
+        requiresPasswordChange: session.user.mustChangePassword,
+      };
+    } catch (error) {
+      this.rethrowAuthError(error, 'get current session');
+    }
   }
 
   async activateMembershipForSession(

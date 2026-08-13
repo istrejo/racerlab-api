@@ -48,3 +48,26 @@ describe('manual membership user migration', () => {
     expect(migration).toContain('DROP TYPE "invitation_delivery_status"');
   });
 });
+
+describe('customer document uniqueness migration', () => {
+  const migration = readFileSync(
+    join(
+      process.cwd(),
+      'prisma/migrations/20260813160000_add_customer_document_uniqueness/migration.sql',
+    ),
+    'utf8',
+  );
+
+  it('normalizes documents before enforcing workshop-scoped uniqueness', () => {
+    expect(migration).toContain('UPPER(REGEXP_REPLACE');
+    expect(migration).toContain('GROUP BY "workshop_id", "document"');
+    expect(migration).toContain('customers_workshop_id_document_key');
+  });
+
+  it('fails closed when normalized legacy documents collide', () => {
+    expect(migration).toContain('HAVING COUNT(*) > 1');
+    expect(migration).toContain(
+      'Cannot enforce customer document uniqueness',
+    );
+  });
+});

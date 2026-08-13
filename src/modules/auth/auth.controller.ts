@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   Post,
   Req,
@@ -30,6 +31,7 @@ import { RefreshCookieService } from './refresh-cookie.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
+import { MeResponseDto } from './dto/me-response.dto';
 import { RefreshResponseDto } from './dto/refresh-response.dto';
 import { SelectWorkshopDto } from './dto/select-workshop.dto';
 import { SignupDto } from './dto/signup.dto';
@@ -175,6 +177,22 @@ export class AuthController {
       requiresWorkshopSelection: session.requiresWorkshopSelection,
       requiresPasswordChange: session.requiresPasswordChange,
     };
+  }
+
+  @Get('me')
+  @ApiBearerAuth('bearer')
+  @ApiOperation({
+    summary: 'Get the revalidated current-session bootstrap state',
+  })
+  @ApiOkResponse({ type: MeResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Authentication is required.' })
+  @ApiServiceUnavailableResponse({
+    description: 'Authentication service temporarily unavailable.',
+  })
+  @UseGuards(JwtAuthGuard)
+  @AllowPasswordChangeRequired()
+  getMe(@CurrentUser() user: AuthenticatedUser): Promise<MeResponseDto> {
+    return this.authService.getMe(user);
   }
 
   @Post('select-workshop')

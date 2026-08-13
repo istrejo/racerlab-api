@@ -38,6 +38,7 @@ describe('AuthService workshop sessions', () => {
     },
     membership: { findFirst: jest.fn() },
     authSession: {
+      findFirst: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
     },
@@ -271,6 +272,148 @@ describe('AuthService workshop sessions', () => {
           isActive: true,
         },
       }),
+    );
+  });
+
+  it('returns only the safe active bootstrap context from the current session', async () => {
+    prisma.authSession.findFirst.mockResolvedValue({
+      user: {
+        id: userId,
+        name: 'Ada Lovelace',
+        email: 'ada@example.com',
+        isActive: true,
+        mustChangePassword: true,
+      },
+      activeMembership: {
+        id: membershipId,
+        workshopId,
+        displayName: 'Ada',
+        phone: '+54 11 5555 5555',
+        address: 'Garage Street 1',
+        isActive: true,
+        role: { name: UserRole.OWNER },
+        workshop: { id: workshopId, name: 'RacerLab' },
+      },
+    });
+
+    await expect(
+      service.getMe({
+        id: userId,
+        email: 'ada@example.com',
+        isActive: true,
+        mustChangePassword: true,
+        sessionId,
+      }),
+    ).resolves.toEqual({
+      user: { id: userId, name: 'Ada Lovelace', email: 'ada@example.com' },
+      activeWorkshop: {
+        workshopId,
+        membershipId,
+        name: 'RacerLab',
+        role: UserRole.OWNER,
+        profile: {
+          displayName: 'Ada',
+          phone: '+54 11 5555 5555',
+          address: 'Garage Street 1',
+        },
+      },
+      requiresPasswordChange: true,
+    });
+    expect(prisma.authSession.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: sessionId,
+        userId,
+        consumedAt: null,
+        revokedAt: null,
+        expiresAt: { gt: expect.any(Date) },
+      },
+      select: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            isActive: true,
+            mustChangePassword: true,
+          },
+        },
+        activeMembership: {
+          select: {
+            id: true,
+            workshopId: true,
+            displayName: true,
+            phone: true,
+            address: true,
+            isActive: true,
+            role: { select: { name: true } },
+            workshop: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+  });
+
+  it('maps a valid neutral session to a null active workshop without sensitive fields', async () => {
+    prisma.authSession.findFirst.mockResolvedValue({
+      user: {
+        id: userId,
+        name: 'Ada Lovelace',
+        email: 'ada@example.com',
+        isActive: true,
+        mustChangePassword: false,
+      },
+      activeMembership: null,
+    });
+
+    const result = await service.getMe({
+      id: userId,
+      email: 'ada@example.com',
+      isActive: true,
+      mustChangePassword: false,
+      sessionId,
+    });
+
+    expect(result).toEqual({
+      user: { id: userId, name: 'Ada Lovelace', email: 'ada@example.com' },
+      activeWorkshop: null,
+      requiresPasswordChange: false,
+    });
+    expect(result).not.toHaveProperty('passwordHash');
+    expect(result).not.toHaveProperty('accessToken');
+    expect(result).not.toHaveProperty('refreshToken');
+    expect(result).not.toHaveProperty('sessionId');
+    expect(result).not.toHaveProperty('permissions');
+  });
+
+  it('rejects a missing or inactive current session', async () => {
+    prisma.authSession.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.getMe({
+        id: userId,
+        email: 'ada@example.com',
+        isActive: true,
+        mustChangePassword: false,
+        sessionId,
+      }),
+    ).rejects.toEqual(new UnauthorizedException('Invalid access session.'));
+  });
+
+  it('maps current-session dependency failures to service unavailable', async () => {
+    prisma.authSession.findFirst.mockRejectedValue(new Error('database down'));
+
+    await expect(
+      service.getMe({
+        id: userId,
+        email: 'ada@example.com',
+        isActive: true,
+        mustChangePassword: false,
+        sessionId,
+      }),
+    ).rejects.toEqual(
+      new ServiceUnavailableException(
+        'Authentication service temporarily unavailable.',
+      ),
     );
   });
 

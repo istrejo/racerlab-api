@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -38,10 +37,6 @@ type AuthSessionData = Omit<
   lastUsedUserAgent?: string;
   lastUsedIp?: string;
 };
-
-function hashToken(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
-}
 
 function extractRefreshCookie(
   setCookie: string[] | string | undefined,

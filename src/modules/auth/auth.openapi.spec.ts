@@ -33,6 +33,7 @@ describe('Auth OpenAPI contract', () => {
             logoutAll: jest.fn(),
             selectWorkshop: jest.fn(),
             changePassword: jest.fn(),
+            getMe: jest.fn(),
           },
         },
         {
@@ -210,5 +211,68 @@ describe('Auth OpenAPI contract', () => {
       '401',
       '503',
     ]);
+  });
+
+  it('documents GET /auth/me as a safe bearer-protected bootstrap contract', () => {
+    const operation = document.paths['/auth/me']?.get;
+    const responseSchema = document.components?.schemas?.MeResponseDto as
+      OpenApiSchema | undefined;
+    const userSchema = document.components?.schemas?.MeUserResponseDto as
+      OpenApiSchema | undefined;
+    const workshopSchema = document.components?.schemas
+      ?.MeActiveWorkshopResponseDto as OpenApiSchema | undefined;
+    const profileSchema = document.components?.schemas?.MeProfileResponseDto as
+      OpenApiSchema | undefined;
+
+    expect(operation?.security).toEqual([{ bearer: [] }]);
+    expect(Object.keys(operation?.responses ?? {})).toEqual([
+      '200',
+      '401',
+      '503',
+    ]);
+    expect(responseSchema?.required).toEqual([
+      'user',
+      'activeWorkshop',
+      'requiresPasswordChange',
+    ]);
+    expect(Object.keys(responseSchema?.properties ?? {})).toEqual([
+      'user',
+      'activeWorkshop',
+      'requiresPasswordChange',
+    ]);
+    expect(Object.keys(userSchema?.properties ?? {})).toEqual([
+      'id',
+      'name',
+      'email',
+    ]);
+    expect(Object.keys(workshopSchema?.properties ?? {})).toEqual([
+      'workshopId',
+      'membershipId',
+      'name',
+      'role',
+      'profile',
+    ]);
+    expect(Object.keys(profileSchema?.properties ?? {})).toEqual([
+      'displayName',
+      'phone',
+      'address',
+    ]);
+    expect(profileSchema?.required).toEqual([
+      'displayName',
+      'phone',
+      'address',
+    ]);
+    expect(workshopSchema?.properties?.role).toEqual(
+      expect.objectContaining({
+        enum: [
+          'OWNER',
+          'ADMIN',
+          'MANAGER',
+          'ADVISOR',
+          'TECHNICIAN',
+          'INVENTORY_MANAGER',
+        ],
+      }),
+    );
   });
 });

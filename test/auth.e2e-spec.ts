@@ -47,6 +47,8 @@ describe('Workshop tenancy (e2e)', () => {
   let app: INestApplication<App>;
   let restoreJwtTestEnv: (() => void) | undefined;
   let activeMembershipId: string | null;
+  let activeMembershipIsValid: boolean;
+  let sessionIsValid: boolean;
   let mustChangePassword: boolean;
   let currentPassword: string;
   let registeredUser:
@@ -132,6 +134,8 @@ describe('Workshop tenancy (e2e)', () => {
       JWT_ACCESS_TOKEN_TTL: '15m',
     });
     activeMembershipId = null;
+    activeMembershipIsValid = true;
+    sessionIsValid = true;
     mustChangePassword = false;
     currentPassword = 'super-secret';
     registeredUser = undefined;
@@ -225,6 +229,9 @@ describe('Workshop tenancy (e2e)', () => {
           .fn()
           .mockImplementation(
             ({ where }: { where: { id: string; userId: string } }) => {
+              if (!sessionIsValid) {
+                return null;
+              }
               const isSignupUser = where.userId === signupUserId;
 
               return {
@@ -234,17 +241,21 @@ describe('Workshop tenancy (e2e)', () => {
                   ? registeredUser
                   : {
                       id: userId,
+                      name: 'Ada',
                       email: 'ada@example.com',
                       isActive: true,
                       mustChangePassword,
                     },
-                activeMembership:
-                  [
+                activeMembership: (() => {
+                  const membership = [
                     ...memberships,
                     ...(signupMembership ? [signupMembership] : []),
-                  ].find(
-                    (membership) => membership.id === activeMembershipId,
-                  ) ?? null,
+                  ].find((candidate) => candidate.id === activeMembershipId);
+
+                  return membership
+                    ? { ...membership, isActive: activeMembershipIsValid }
+                    : null;
+                })(),
               };
             },
           ),
@@ -538,5 +549,84 @@ describe('Workshop tenancy (e2e)', () => {
       .get('/api/workshops')
       .set('Authorization', `Bearer ${temporaryToken}`)
       .expect(200);
+  });
+
+  it('returns safe active and neutral bootstrap state, including forced-password state', async () => {
+    const neutralToken = await login();
+
+    await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${neutralToken}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({
+          user: { id: userId, name: 'Ada', email: 'ada@example.com' },
+          activeWorkshop: null,
+          requiresPasswordChange: false,
+        });
+      });
+
+    const activeToken = await selectWorkshop(neutralToken, workshopA);
+    await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${activeToken}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual({
+          user: { id: userId, name: 'Ada', email: 'ada@example.com' },
+          activeWorkshop: {
+            workshopId: workshopA,
+            membershipId: membershipA,
+            name: 'Workshop A',
+            role: UserRole.OWNER,
+            profile: { displayName: 'Ada', phone: null, address: null },
+          },
+          requiresPasswordChange: false,
+        });
+        expect(body).not.toHaveProperty('passwordHash');
+        expect(body).not.toHaveProperty('accessToken');
+        expect(body).not.toHaveProperty('refreshToken');
+        expect(body).not.toHaveProperty('permissions');
+      });
+
+    mustChangePassword = true;
+    activeMembershipId = null;
+    const forcedPasswordToken = await login(true);
+    await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${forcedPasswordToken}`)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          activeWorkshop: null,
+          requiresPasswordChange: true,
+        });
+      });
+    await request(app.getHttpServer())
+      .get('/api/workshops')
+      .set('Authorization', `Bearer ${forcedPasswordToken}`)
+      .expect(403)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ code: 'PASSWORD_CHANGE_REQUIRED' });
+      });
+  });
+
+  it('rejects absent, revoked, and inactive-context bearer sessions for bootstrap', async () => {
+    await request(app.getHttpServer()).get('/api/auth/me').expect(401);
+
+    const accessToken = await login();
+    sessionIsValid = false;
+    await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(401);
+
+    sessionIsValid = true;
+    const activeToken = await selectWorkshop(await login(), workshopA);
+    activeMembershipIsValid = false;
+    await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${activeToken}`)
+      .expect(401);
   });
 });

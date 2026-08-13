@@ -30,6 +30,15 @@ describe('RolesGuard', () => {
     ]);
   });
 
+  it('allows OWNER to satisfy an ADMIN requirement', () => {
+    reflector.getAllAndOverride.mockReturnValue([UserRole.ADMIN]);
+    jest.spyOn(context, 'switchToHttp').mockReturnValue({
+      getRequest: () => ({ user: { role: UserRole.OWNER } }),
+    } as never);
+
+    expect(guard.canActivate(context)).toBe(true);
+  });
+
   it.each([
     {
       caseName: 'a route has no role metadata',
@@ -40,6 +49,11 @@ describe('RolesGuard', () => {
       caseName: 'the current user role does not match',
       roles: [UserRole.ADMIN],
       user: { role: UserRole.MANAGER },
+    },
+    {
+      caseName: 'ADMIN attempts an OWNER-only operation',
+      roles: [UserRole.OWNER],
+      user: { role: UserRole.ADMIN },
     },
     {
       caseName: 'the request user is absent',

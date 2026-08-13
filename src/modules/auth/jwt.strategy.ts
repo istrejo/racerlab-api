@@ -12,6 +12,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 type JwtPayload = {
   sub?: unknown;
+  sid?: unknown;
+  wid?: unknown;
+  mid?: unknown;
 };
 
 const UUID_SUBJECT_PATTERN =
@@ -32,25 +35,79 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
-    if (!this.isValidSubject(payload.sub)) {
-      throw new UnauthorizedException('Invalid token subject.');
+    if (
+      !this.isValidUuid(payload.sub) ||
+      !this.isValidUuid(payload.sid) ||
+      !this.hasValidWorkshopClaims(payload)
+    ) {
+      throw new UnauthorizedException('Invalid access token.');
     }
 
     try {
-      const user = await this.prisma.user.findUnique({
-        where: { id: payload.sub },
-        include: { role: { select: { name: true } } },
+      const now = new Date();
+      const session = await this.prisma.authSession.findFirst({
+        where: {
+          id: payload.sid,
+          userId: payload.sub,
+          consumedAt: null,
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              isActive: true,
+              mustChangePassword: true,
+            },
+          },
+          activeMembership: {
+            include: {
+              role: { select: { name: true } },
+              workshop: { select: { id: true } },
+            },
+          },
+        },
       });
 
-      if (!user || !user.isActive) {
-        throw new UnauthorizedException('User is no longer active.');
+      if (!session?.user.isActive) {
+        throw new UnauthorizedException('Invalid access token.');
+      }
+
+      const membership = session.activeMembership;
+
+      if (!membership) {
+        if (payload.mid !== undefined || payload.wid !== undefined) {
+          throw new UnauthorizedException('Invalid access token.');
+        }
+
+        return {
+          id: session.user.id,
+          email: session.user.email,
+          isActive: true,
+          mustChangePassword: session.user.mustChangePassword,
+          sessionId: session.id,
+        };
+      }
+
+      if (
+        !membership.isActive ||
+        membership.id !== payload.mid ||
+        membership.workshopId !== payload.wid
+      ) {
+        throw new UnauthorizedException('Invalid access token.');
       }
 
       return {
-        id: user.id,
-        email: user.email,
-        role: user.role.name,
+        id: session.user.id,
+        email: session.user.email,
         isActive: true,
+        mustChangePassword: session.user.mustChangePassword,
+        sessionId: session.id,
+        membershipId: membership.id,
+        workshopId: membership.workshopId,
+        role: membership.role.name,
       };
     } catch (error) {
       if (error instanceof UnauthorizedException) {
@@ -66,7 +123,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
   }
 
-  private isValidSubject(subject: unknown): subject is string {
-    return typeof subject === 'string' && UUID_SUBJECT_PATTERN.test(subject);
+  private hasValidWorkshopClaims(payload: JwtPayload): boolean {
+    const hasWorkshopId = payload.wid !== undefined;
+    const hasMembershipId = payload.mid !== undefined;
+
+    return (
+      (!hasWorkshopId && !hasMembershipId) ||
+      (hasWorkshopId &&
+        hasMembershipId &&
+        this.isValidUuid(payload.wid) &&
+        this.isValidUuid(payload.mid))
+    );
+  }
+
+  private isValidUuid(value: unknown): value is string {
+    return typeof value === 'string' && UUID_SUBJECT_PATTERN.test(value);
   }
 }

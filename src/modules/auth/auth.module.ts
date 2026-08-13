@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { WorkshopContextGuard } from '../../common/guards/workshop-context.guard';
 import { PasswordHasherService } from '../../common/security/password-hasher.service';
 import { getAuthConfig } from '../../config/auth.config';
 import { PrismaModule } from '../../prisma/prisma.module';
@@ -10,6 +11,7 @@ import { AuthSessionService } from './auth-session.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
+import { RefreshCookieService } from './refresh-cookie.service';
 
 @Module({
   imports: [
@@ -35,8 +37,17 @@ import { JwtStrategy } from './jwt.strategy';
     JwtStrategy,
     JwtAuthGuard,
     RolesGuard,
+    WorkshopContextGuard,
+    RefreshCookieService,
     PasswordHasherService,
   ],
-  exports: [JwtAuthGuard, RolesGuard],
+  exports: [
+    AuthService,
+    JwtAuthGuard,
+    RolesGuard,
+    WorkshopContextGuard,
+    RefreshCookieService,
+    PasswordHasherService,
+  ],
 })
 export class AuthModule {}

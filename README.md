@@ -2,7 +2,7 @@
 
 Backend foundation for a workshop-management platform built around traceable service operations, secure authentication, and a scalable domain model.
 
-> **Project status:** Active development. Authentication, refresh-session rotation, RBAC, protected user management, API documentation, health checks, and the initial workshop domain schema are implemented. Business modules and workshop-based tenancy are being developed incrementally.
+> **Project status:** Active development. Authentication, forced first-access password changes, refresh-session rotation, workshop-bound sessions, OWNER/ADMIN membership RBAC, workshop selection, manual user management, API documentation, health checks, and the initial workshop domain schema are implemented.
 
 ## Overview
 
@@ -18,7 +18,7 @@ This repository contains the REST API and the backend business foundation. The A
 - Current-session logout and global logout across all active sessions.
 - Password hashing with Argon2.
 - Role-based access control using NestJS guards and decorators.
-- Protected administration endpoints for creating, listing, reading, and updating users.
+- Protected workshop-scoped endpoints for manually creating, listing, reading, updating, and resetting users.
 - Swagger/OpenAPI documentation with bearer authentication support.
 - Global DTO validation with payload whitelisting.
 - Configurable CORS and cookie behavior.
@@ -44,8 +44,9 @@ The schema is intentionally broader than the currently exposed HTTP modules. Dom
 1. `POST /api/auth/login` validates the user and returns a short-lived access token.
 2. A long-lived opaque refresh token is stored in an `HttpOnly` cookie.
 3. `POST /api/auth/refresh` rotates the refresh session and returns a new access token.
-4. `POST /api/auth/logout` revokes the current refresh session.
-5. `POST /api/auth/logout-all` revokes every active session for the authenticated user.
+4. Users created with a temporary password must call `POST /api/auth/change-password` before using private resources.
+5. `POST /api/auth/logout` revokes the current refresh session.
+6. `POST /api/auth/logout-all` revokes every active session for the authenticated user.
 
 The frontend keeps the access token in memory and relies on the refresh cookie to restore the session after a page reload.
 
@@ -57,8 +58,9 @@ src/
 ├── config/          # Auth, CORS, and Swagger configuration
 ├── health/          # Application and database health checks
 ├── modules/
-│   ├── auth/        # Login, refresh rotation, logout, and session lifecycle
-│   └── users/       # Protected user administration
+│   ├── auth/        # Login, password change, refresh rotation, logout, and sessions
+│   ├── memberships/ # Workshop-scoped manual user administration
+│   └── workshops/   # Workshop selection, management, and ownership transfer
 ├── prisma/          # Prisma integration
 └── testing/         # Shared testing safeguards and utilities
 
@@ -70,17 +72,15 @@ prisma/
 
 The backend is kept separate from the web client so both applications can evolve, test, and deploy independently.
 
-## Workshop tenancy roadmap
-
-The next major architecture milestone is workshop-based tenancy:
+## Workshop tenancy
 
 - A global user identity can be associated with a workshop through a membership.
-- Roles and permissions are evaluated from the active workshop membership instead of directly from the user.
+- Roles and permissions are evaluated from the active membership instead of directly from the user.
 - Operational records are scoped by `workshopId`.
-- Workshop owners can invite employees through expiring, one-time invitation tokens.
+- Every workshop has exactly one active `OWNER`; ownership changes through an atomic transfer.
+- Workshop owners and administrators create employee identities manually with temporary passwords.
+- Temporary-password users are blocked from private resources until they choose a new password.
 - Authentication sessions remain bound to the active workshop context.
-
-This section describes the target architecture and is not presented as completed functionality.
 
 ## Tech stack
 

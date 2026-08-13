@@ -1,114 +1,113 @@
-import {
-  Logger,
-  ServiceUnavailableException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
-import { applyJwtTestEnv } from '../../testing/jwt-test-env';
 import { JwtStrategy } from './jwt.strategy';
 
-describe('JwtStrategy', () => {
-  let prisma: {
-    user: {
-      findUnique: jest.Mock;
-    };
+describe('JwtStrategy tenant resolution', () => {
+  const userId = '2f1b7652-92f6-4a32-863f-26b5af5e0c12';
+  const sessionId = '66e37e48-b2df-4de4-b726-56c958403c8e';
+  const workshopId = 'e79033dc-7d16-421f-ae1a-d216f9a306d7';
+  const membershipId = '6650e2ef-c46a-4fe2-875e-4af7c576e12d';
+  const prisma = {
+    authSession: { findFirst: jest.fn() },
   };
   let strategy: JwtStrategy;
-  let restoreJwtTestEnv: () => void;
+
+  beforeAll(() => {
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    process.env.JWT_ACCESS_TOKEN_TTL = '15m';
+  });
 
   beforeEach(() => {
-    restoreJwtTestEnv = applyJwtTestEnv();
-    prisma = {
+    jest.clearAllMocks();
+    strategy = new JwtStrategy(prisma as never);
+  });
+
+  it('loads the live OWNER role from the active membership', async () => {
+    prisma.authSession.findFirst.mockResolvedValue({
+      id: sessionId,
       user: {
-        findUnique: jest.fn(),
+        id: userId,
+        email: 'owner@example.com',
+        isActive: true,
+        mustChangePassword: true,
       },
-    };
-    strategy = new JwtStrategy(prisma as unknown as PrismaService);
-  });
-
-  afterEach(() => {
-    restoreJwtTestEnv();
-  });
-
-  it('reloads the active user and returns the current database role instead of a stale token claim', async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      id: '2f1b7652-92f6-4a32-863f-26b5af5e0c12',
-      email: 'ada@example.com',
-      isActive: true,
-      role: { name: UserRole.MANAGER },
+      activeMembership: {
+        id: membershipId,
+        workshopId,
+        isActive: true,
+        role: { name: UserRole.OWNER },
+        workshop: { id: workshopId },
+      },
     });
 
     await expect(
       strategy.validate({
-        sub: '2f1b7652-92f6-4a32-863f-26b5af5e0c12',
-        role: UserRole.ADMIN,
+        sub: userId,
+        sid: sessionId,
+        wid: workshopId,
+        mid: membershipId,
       }),
     ).resolves.toEqual({
-      id: '2f1b7652-92f6-4a32-863f-26b5af5e0c12',
-      email: 'ada@example.com',
-      role: UserRole.MANAGER,
+      id: userId,
+      email: 'owner@example.com',
       isActive: true,
-    });
-
-    expect(prisma.user.findUnique).toHaveBeenCalledWith({
-      where: { id: '2f1b7652-92f6-4a32-863f-26b5af5e0c12' },
-      include: { role: { select: { name: true } } },
+      mustChangePassword: true,
+      sessionId,
+      membershipId,
+      workshopId,
+      role: UserRole.OWNER,
     });
   });
 
-  it.each([
-    { caseName: 'the user no longer exists', user: null },
-    {
-      caseName: 'the user was deactivated after token issuance',
+  it('accepts a valid neutral session without workshop claims', async () => {
+    prisma.authSession.findFirst.mockResolvedValue({
+      id: sessionId,
       user: {
-        id: '2f1b7652-92f6-4a32-863f-26b5af5e0c12',
-        email: 'ada@example.com',
-        isActive: false,
-        role: { name: UserRole.ADMIN },
+        id: userId,
+        email: 'user@example.com',
+        isActive: true,
+        mustChangePassword: false,
       },
-    },
-  ])('rejects a token when $caseName', async ({ user }) => {
-    prisma.user.findUnique.mockResolvedValue(user);
+      activeMembership: null,
+    });
 
     await expect(
-      strategy.validate({ sub: '2f1b7652-92f6-4a32-863f-26b5af5e0c12' }),
-    ).rejects.toEqual(new UnauthorizedException('User is no longer active.'));
+      strategy.validate({ sub: userId, sid: sessionId }),
+    ).resolves.toEqual({
+      id: userId,
+      email: 'user@example.com',
+      isActive: true,
+      mustChangePassword: false,
+      sessionId,
+    });
   });
 
-  it.each([
-    { caseName: 'a missing subject', payload: {} },
-    { caseName: 'an empty subject', payload: { sub: '' } },
-    { caseName: 'a non-string subject', payload: { sub: 42 } },
-    { caseName: 'a malformed subject', payload: { sub: 'not-a-uuid' } },
-  ])('rejects $caseName before querying Prisma', async ({ payload }) => {
-    await expect(strategy.validate(payload)).rejects.toEqual(
-      new UnauthorizedException('Invalid token subject.'),
-    );
-
-    expect(prisma.user.findUnique).not.toHaveBeenCalled();
-  });
-
-  it('maps Prisma failures to a generic service-unavailable response without logging token details', async () => {
-    const databaseError = new Error(
-      'database offline for 2f1b7652-92f6-4a32-863f-26b5af5e0c12',
-    );
-    const loggerError = jest.spyOn(Logger.prototype, 'error');
-    prisma.user.findUnique.mockRejectedValue(databaseError);
+  it('rejects stale workshop claims after the session context changes', async () => {
+    prisma.authSession.findFirst.mockResolvedValue({
+      id: sessionId,
+      user: {
+        id: userId,
+        email: 'user@example.com',
+        isActive: true,
+        mustChangePassword: false,
+      },
+      activeMembership: null,
+    });
 
     await expect(
-      strategy.validate({ sub: '2f1b7652-92f6-4a32-863f-26b5af5e0c12' }),
-    ).rejects.toEqual(
-      new ServiceUnavailableException(
-        'Authentication service temporarily unavailable.',
-      ),
-    );
+      strategy.validate({
+        sub: userId,
+        sid: sessionId,
+        wid: workshopId,
+        mid: membershipId,
+      }),
+    ).rejects.toEqual(new UnauthorizedException('Invalid access token.'));
+  });
 
-    expect(loggerError).toHaveBeenCalledWith(
-      'JWT user revalidation failed due to an internal dependency.',
+  it('rejects tokens without a valid session id before querying Prisma', async () => {
+    await expect(strategy.validate({ sub: userId })).rejects.toEqual(
+      new UnauthorizedException('Invalid access token.'),
     );
-    expect(loggerError).not.toHaveBeenCalledWith(
-      expect.stringContaining('2f1b7652-92f6-4a32-863f-26b5af5e0c12'),
-    );
+    expect(prisma.authSession.findFirst).not.toHaveBeenCalled();
   });
 });

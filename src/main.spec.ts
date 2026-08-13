@@ -45,7 +45,9 @@ describe('configureApp', () => {
     });
     expect(app.use).toHaveBeenCalledTimes(1);
 
-    const [middleware] = app.use.mock.calls[0] as [(...args: unknown[]) => unknown];
+    const [middleware] = app.use.mock.calls[0] as [
+      (...args: unknown[]) => unknown,
+    ];
 
     expect(typeof middleware).toBe('function');
     expect(middleware.name).toBe('cookieParser');

@@ -274,6 +274,7 @@ model Customer {
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
   @@unique([workshopId, id], map: "customers_workshop_id_id_key")
+  @@unique([workshopId, document], map: "customers_workshop_id_document_key")
   @@index([workshopId, fullName], map: "customers_workshop_id_full_name_idx")
   @@map("customers")
 }

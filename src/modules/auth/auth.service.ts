@@ -169,73 +169,80 @@ export class AuthService {
     user: AuthenticatedUser,
     workshopId: string,
   ): Promise<LoginResponseDto> {
-    const membership = await this.prisma.membership.findFirst({
-      where: {
-        userId: user.id,
-        workshopId,
-        isActive: true,
-      },
-      include: {
-        role: { select: { name: true } },
-        workshop: { select: { id: true, name: true } },
-      },
-    });
+    try {
+      const membership = await this.prisma.membership.findFirst({
+        where: {
+          userId: user.id,
+          workshopId,
+          isActive: true,
+        },
+        include: {
+          role: { select: { name: true } },
+          workshop: { select: { id: true, name: true } },
+        },
+      });
 
-    if (!membership) {
-      throw new UnauthorizedException('Workshop membership is not available.');
+      if (!membership) {
+        throw new UnauthorizedException(
+          'Workshop membership is not available.',
+        );
+      }
+
+      return this.activateMembershipForSession(user, membership);
+    } catch (error) {
+      this.rethrowAuthError(error, 'select workshop');
     }
-
-    return this.activateMembershipForSession(user, membership);
   }
 
   async getMe(user: AuthenticatedUser): Promise<MeResponseDto> {
     try {
-      const session = await this.prisma.authSession.findFirst({
-        where: {
-          id: user.sessionId,
-          userId: user.id,
-          revokedAt: null,
-          expiresAt: { gt: new Date() },
-        },
-        select: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              isActive: true,
-              mustChangePassword: true,
-            },
+      // JwtStrategy already validated the session, user activity, and
+      // membership. Here we only fetch profile fields not present in the
+      // access token (user name, membership display profile) using two
+      // lightweight parallel queries instead of re-querying the full session.
+      const [identity, membership] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: user.id, isActive: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            mustChangePassword: true,
           },
-          activeMembership: {
-            select: {
-              id: true,
-              workshopId: true,
-              displayName: true,
-              phone: true,
-              address: true,
-              isActive: true,
-              role: { select: { name: true } },
-              workshop: { select: { id: true, name: true } },
-            },
-          },
-        },
-      });
+        }),
+        user.membershipId
+          ? this.prisma.membership.findFirst({
+              where: {
+                id: user.membershipId,
+                userId: user.id,
+                isActive: true,
+              },
+              select: {
+                id: true,
+                workshopId: true,
+                displayName: true,
+                phone: true,
+                address: true,
+                role: { select: { name: true } },
+                workshop: { select: { id: true, name: true } },
+              },
+            })
+          : null,
+      ]);
 
-      if (
-        !session?.user.isActive ||
-        session.activeMembership?.isActive === false
-      ) {
+      if (!identity) {
         throw new UnauthorizedException('Invalid access session.');
       }
 
-      const membership = session.activeMembership;
+      if (user.membershipId && !membership) {
+        throw new UnauthorizedException('Invalid access session.');
+      }
 
       return {
         user: {
-          id: session.user.id,
-          name: session.user.name,
-          email: session.user.email,
+          id: identity.id,
+          name: identity.name,
+          email: identity.email,
         },
         activeWorkshop: membership
           ? {
@@ -250,7 +257,7 @@ export class AuthService {
               },
             }
           : null,
-        requiresPasswordChange: session.user.mustChangePassword,
+        requiresPasswordChange: identity.mustChangePassword,
       };
     } catch (error) {
       this.rethrowAuthError(error, 'get current session');
@@ -261,36 +268,40 @@ export class AuthService {
     user: Pick<AuthenticatedUser, 'id' | 'sessionId' | 'mustChangePassword'>,
     membership: ActiveMembershipContext,
   ): Promise<LoginResponseDto> {
-    const updated = await this.prisma.authSession.updateMany({
-      where: {
-        id: user.sessionId,
-        userId: user.id,
-        revokedAt: null,
-        expiresAt: { gt: new Date() },
-      },
-      data: { activeMembershipId: membership.id },
-    });
+    try {
+      const updated = await this.prisma.authSession.updateMany({
+        where: {
+          id: user.sessionId,
+          userId: user.id,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { activeMembershipId: membership.id },
+      });
 
-    if (updated.count !== 1) {
-      throw new UnauthorizedException('Invalid access session.');
+      if (updated.count !== 1) {
+        throw new UnauthorizedException('Invalid access session.');
+      }
+
+      const identity = await this.prisma.user.findUniqueOrThrow({
+        where: { id: user.id },
+        select: { id: true, name: true, email: true },
+      });
+      const accessToken = await this.authTokenService.signAccessToken(
+        user.id,
+        user.sessionId,
+        membership,
+      );
+
+      return this.toTokenResponse(
+        accessToken,
+        membership,
+        identity,
+        user.mustChangePassword,
+      );
+    } catch (error) {
+      this.rethrowAuthError(error, 'activate membership');
     }
-
-    const identity = await this.prisma.user.findUniqueOrThrow({
-      where: { id: user.id },
-      select: { id: true, name: true, email: true },
-    });
-    const accessToken = await this.authTokenService.signAccessToken(
-      user.id,
-      user.sessionId,
-      membership,
-    );
-
-    return this.toTokenResponse(
-      accessToken,
-      membership,
-      identity,
-      user.mustChangePassword,
-    );
   }
 
   async issueAuthenticatedSession(

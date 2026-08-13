@@ -286,24 +286,22 @@ describe('AuthService workshop sessions', () => {
   });
 
   it('returns only the safe active bootstrap context from the current session', async () => {
-    prisma.authSession.findFirst.mockResolvedValue({
-      user: {
-        id: userId,
-        name: 'Ada Lovelace',
-        email: 'ada@example.com',
-        isActive: true,
-        mustChangePassword: true,
-      },
-      activeMembership: {
-        id: membershipId,
-        workshopId,
-        displayName: 'Ada',
-        phone: '+54 11 5555 5555',
-        address: 'Garage Street 1',
-        isActive: true,
-        role: { name: UserRole.OWNER },
-        workshop: { id: workshopId, name: 'RacerLab' },
-      },
+    // The JWT strategy already validated the session. getMe now fetches only
+    // the user profile and membership profile via two lighter parallel queries.
+    prisma.user.findUnique.mockResolvedValue({
+      id: userId,
+      name: 'Ada Lovelace',
+      email: 'ada@example.com',
+      mustChangePassword: true,
+    });
+    prisma.membership.findFirst.mockResolvedValue({
+      id: membershipId,
+      workshopId,
+      displayName: 'Ada',
+      phone: '+54 11 5555 5555',
+      address: 'Garage Street 1',
+      role: { name: UserRole.OWNER },
+      workshop: { id: workshopId, name: 'RacerLab' },
     });
 
     await expect(
@@ -313,6 +311,9 @@ describe('AuthService workshop sessions', () => {
         isActive: true,
         mustChangePassword: true,
         sessionId,
+        membershipId,
+        workshopId,
+        role: UserRole.OWNER,
       }),
     ).resolves.toEqual({
       user: { id: userId, name: 'Ada Lovelace', email: 'ada@example.com' },
@@ -329,49 +330,35 @@ describe('AuthService workshop sessions', () => {
       },
       requiresPasswordChange: true,
     });
-    expect(prisma.authSession.findFirst).toHaveBeenCalledWith({
-      where: {
-        id: sessionId,
-        userId,
-        revokedAt: null,
-        expiresAt: { gt: expect.any(Date) },
-      },
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: userId, isActive: true },
       select: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            isActive: true,
-            mustChangePassword: true,
-          },
-        },
-        activeMembership: {
-          select: {
-            id: true,
-            workshopId: true,
-            displayName: true,
-            phone: true,
-            address: true,
-            isActive: true,
-            role: { select: { name: true } },
-            workshop: { select: { id: true, name: true } },
-          },
-        },
+        id: true,
+        name: true,
+        email: true,
+        mustChangePassword: true,
+      },
+    });
+    expect(prisma.membership.findFirst).toHaveBeenCalledWith({
+      where: { id: membershipId, userId, isActive: true },
+      select: {
+        id: true,
+        workshopId: true,
+        displayName: true,
+        phone: true,
+        address: true,
+        role: { select: { name: true } },
+        workshop: { select: { id: true, name: true } },
       },
     });
   });
 
   it('maps a valid neutral session to a null active workshop without sensitive fields', async () => {
-    prisma.authSession.findFirst.mockResolvedValue({
-      user: {
-        id: userId,
-        name: 'Ada Lovelace',
-        email: 'ada@example.com',
-        isActive: true,
-        mustChangePassword: false,
-      },
-      activeMembership: null,
+    prisma.user.findUnique.mockResolvedValue({
+      id: userId,
+      name: 'Ada Lovelace',
+      email: 'ada@example.com',
+      mustChangePassword: false,
     });
 
     const result = await service.getMe({
@@ -380,6 +367,7 @@ describe('AuthService workshop sessions', () => {
       isActive: true,
       mustChangePassword: false,
       sessionId,
+      // no membershipId → neutral session, no workshop query
     });
 
     expect(result).toEqual({
@@ -392,10 +380,11 @@ describe('AuthService workshop sessions', () => {
     expect(result).not.toHaveProperty('refreshToken');
     expect(result).not.toHaveProperty('sessionId');
     expect(result).not.toHaveProperty('permissions');
+    expect(prisma.membership.findFirst).not.toHaveBeenCalled();
   });
 
   it('rejects a missing or inactive current session', async () => {
-    prisma.authSession.findFirst.mockResolvedValue(null);
+    prisma.user.findUnique.mockResolvedValue(null);
 
     await expect(
       service.getMe({
@@ -409,7 +398,7 @@ describe('AuthService workshop sessions', () => {
   });
 
   it('maps current-session dependency failures to service unavailable', async () => {
-    prisma.authSession.findFirst.mockRejectedValue(new Error('database down'));
+    prisma.user.findUnique.mockRejectedValue(new Error('database down'));
 
     await expect(
       service.getMe({

@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -21,6 +22,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import type { WorkshopContext } from '../../common/auth/workshop-context';
@@ -51,6 +53,8 @@ const CUSTOMER_WRITE_ROLES = [
 
 @ApiTags('customers')
 @ApiBearerAuth('bearer')
+@ApiBadRequestResponse({ description: 'Request validation failed.' })
+@ApiUnauthorizedResponse({ description: 'Authentication is required.' })
 @ApiForbiddenResponse({
   description: 'The active workshop role cannot perform this operation.',
 })

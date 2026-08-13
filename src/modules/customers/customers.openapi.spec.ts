@@ -79,6 +79,20 @@ describe('Customers OpenAPI contract', () => {
       'createdAt',
       'updatedAt',
     ]);
+    expect(customer?.required).toEqual([
+      'id',
+      'fullName',
+      'phone',
+      'whatsapp',
+      'email',
+      'document',
+      'address',
+      'notes',
+      'vehicleCount',
+      'serviceOrderCount',
+      'createdAt',
+      'updatedAt',
+    ]);
     expect(Object.keys(page?.properties ?? {})).toEqual([
       'items',
       'page',
@@ -86,6 +100,19 @@ describe('Customers OpenAPI contract', () => {
       'total',
       'totalPages',
     ]);
+  });
+
+  it('documents validation and authentication failures on every operation', () => {
+    for (const operation of [
+      document.paths['/customers']?.get,
+      document.paths['/customers']?.post,
+      document.paths['/customers/{id}']?.get,
+      document.paths['/customers/{id}']?.patch,
+      document.paths['/customers/{id}']?.delete,
+    ]) {
+      expect(operation?.responses).toHaveProperty('400');
+      expect(operation?.responses).toHaveProperty('401');
+    }
   });
 
   it('documents search, page, and bounded limit query parameters', () => {

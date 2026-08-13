@@ -20,6 +20,9 @@ describe('Auth OpenAPI contract', () => {
   let document: OpenAPIObject;
 
   beforeAll(async () => {
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    process.env.JWT_ACCESS_TOKEN_TTL = '15m';
+    process.env.AUTH_REFRESH_TOKEN_SECRET = 'test-refresh-token-secret';
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
@@ -155,6 +158,7 @@ describe('Auth OpenAPI contract', () => {
     expect(Object.keys(loginResponseSchema?.properties ?? {})).toEqual([
       'accessToken',
       'tokenType',
+      'user',
       'activeWorkshop',
       'requiresWorkshopSelection',
       'requiresPasswordChange',
@@ -162,6 +166,7 @@ describe('Auth OpenAPI contract', () => {
     expect(loginResponseSchema?.required).toEqual([
       'accessToken',
       'tokenType',
+      'user',
       'activeWorkshop',
       'requiresWorkshopSelection',
       'requiresPasswordChange',
@@ -173,6 +178,7 @@ describe('Auth OpenAPI contract', () => {
     expect(Object.keys(refreshResponseSchema?.properties ?? {})).toEqual([
       'accessToken',
       'tokenType',
+      'user',
       'activeWorkshop',
       'requiresWorkshopSelection',
       'requiresPasswordChange',
@@ -180,6 +186,7 @@ describe('Auth OpenAPI contract', () => {
     expect(refreshResponseSchema?.required).toEqual([
       'accessToken',
       'tokenType',
+      'user',
       'activeWorkshop',
       'requiresWorkshopSelection',
       'requiresPasswordChange',

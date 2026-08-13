@@ -232,29 +232,47 @@ model Membership {
 }
 
 model AuthSession {
-  id                  String      @id @default(uuid()) @db.Uuid
-  userId              String      @map("user_id") @db.Uuid
-  activeMembershipId  String?     @map("active_membership_id") @db.Uuid
-  tokenFamilyId       String      @map("token_family_id") @db.Uuid
-  tokenHash           String      @unique(map: "auth_sessions_token_hash_key") @map("token_hash")
-  expiresAt           DateTime    @map("expires_at")
-  consumedAt          DateTime?   @map("consumed_at")
-  revokedAt           DateTime?   @map("revoked_at")
-  replacedBySessionId String?     @map("replaced_by_session_id") @db.Uuid
-  createdUserAgent    String?     @map("created_user_agent")
-  createdIp           String?     @map("created_ip")
-  lastUsedUserAgent   String?     @map("last_used_user_agent")
-  lastUsedIp          String?     @map("last_used_ip")
-  createdAt           DateTime    @default(now()) @map("created_at")
-  updatedAt           DateTime    @updatedAt @map("updated_at")
-  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  activeMembership    Membership? @relation(fields: [activeMembershipId, userId], references: [id, userId])
+  id                 String         @id @default(uuid()) @db.Uuid
+  userId             String         @map("user_id") @db.Uuid
+  activeMembershipId String?        @map("active_membership_id") @db.Uuid
+  expiresAt          DateTime       @map("expires_at")
+  revokedAt          DateTime?      @map("revoked_at")
+  createdUserAgent   String?        @map("created_user_agent")
+  createdIp          String?        @map("created_ip")
+  lastUsedUserAgent  String?        @map("last_used_user_agent")
+  lastUsedIp         String?        @map("last_used_ip")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeMembership   Membership?    @relation(fields: [activeMembershipId, userId], references: [id, userId])
+  refreshTokens      RefreshToken[]
 
   @@index([userId], map: "auth_sessions_user_id_idx")
   @@index([activeMembershipId], map: "auth_sessions_active_membership_id_idx")
-  @@index([tokenFamilyId], map: "auth_sessions_token_family_id_idx")
   @@index([expiresAt], map: "auth_sessions_expires_at_idx")
   @@map("auth_sessions")
+}
+
+model RefreshToken {
+  id                String        @id @default(uuid()) @db.Uuid
+  sessionId         String        @map("session_id") @db.Uuid
+  expiresAt         DateTime      @map("expires_at")
+  consumedAt        DateTime?     @map("consumed_at")
+  revokedAt         DateTime?     @map("revoked_at")
+  replacedByTokenId String?       @unique(map: "refresh_tokens_replaced_by_token_id_key") @map("replaced_by_token_id") @db.Uuid
+  createdUserAgent  String?       @map("created_user_agent")
+  createdIp         String?       @map("created_ip")
+  lastUsedUserAgent String?       @map("last_used_user_agent")
+  lastUsedIp        String?       @map("last_used_ip")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  session           AuthSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  replacedBy        RefreshToken? @relation("RefreshTokenReplacement", fields: [replacedByTokenId], references: [id])
+  replaces          RefreshToken? @relation("RefreshTokenReplacement")
+
+  @@index([sessionId], map: "refresh_tokens_session_id_idx")
+  @@index([expiresAt], map: "refresh_tokens_expires_at_idx")
+  @@map("refresh_tokens")
 }
 
 model Customer {

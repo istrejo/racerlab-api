@@ -9,13 +9,7 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { AuthenticatedUser } from '../../common/auth/authenticated-user';
 import { getAuthConfig } from '../../config/auth.config';
 import { PrismaService } from '../../prisma/prisma.service';
-
-type JwtPayload = {
-  sub?: unknown;
-  sid?: unknown;
-  wid?: unknown;
-  mid?: unknown;
-};
+import type { JwtPayload } from './model/jwt-payload.model';
 
 const UUID_SUBJECT_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -49,7 +43,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         where: {
           id: payload.sid,
           userId: payload.sub,
-          consumedAt: null,
           revokedAt: null,
           expiresAt: { gt: now },
         },

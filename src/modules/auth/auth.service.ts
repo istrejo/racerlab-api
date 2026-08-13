@@ -6,48 +6,31 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { JwtService } from '@nestjs/jwt';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../../common/auth/authenticated-user';
 import { PasswordHasherService } from '../../common/security/password-hasher.service';
 import { normalizeEmail } from '../../common/utils/email-normalizer';
-import { getAuthConfig } from '../../config/auth.config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuthSessionService } from './auth-session.service';
 import { ActiveWorkshopResponseDto } from './dto/active-workshop-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import { SignupDto } from './dto/signup.dto';
-
-export type AuthRequestContext = {
-  userAgent?: string;
-  ipAddress?: string;
-};
-
-export type AuthSessionResponse = LoginResponseDto & {
-  refreshToken: string;
-  refreshTokenExpiresAt: Date;
-};
-
-export type ActiveMembershipContext = {
-  id: string;
-  workshopId: string;
-  role: { name: UserRole };
-  workshop: { id: string; name: string };
-};
+import type { ActiveMembershipContext } from './model/active-membership-context.model';
+import type { AuthRequestContext } from './model/auth-request-context.model';
+import type { AuthSessionResponse } from './model/auth-session.model';
+import { AuthSessionService } from './services/session/session';
+import { AuthTokenService } from './services/token/token';
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly authConfig = getAuthConfig();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwordHasher: PasswordHasherService,
-    private readonly jwtService: JwtService,
     private readonly authSessionService: AuthSessionService,
+    private readonly authTokenService: AuthTokenService,
   ) {}
 
   async signup(
@@ -81,11 +64,16 @@ export class AuthService {
             isActive: true,
             mustChangePassword: false,
           },
-          select: { id: true },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            mustChangePassword: true,
+          },
         });
 
         return this.issueAuthenticatedSession(
-          user.id,
+          user,
           undefined,
           context,
           null,
@@ -130,7 +118,7 @@ export class AuthService {
         user.memberships.length === 1 ? user.memberships[0] : null;
 
       return this.issueAuthenticatedSession(
-        user.id,
+        user,
         activeMembership?.id,
         context,
         activeMembership,
@@ -150,84 +138,27 @@ export class AuthService {
         throw new UnauthorizedException('Invalid refresh session.');
       }
 
-      const session =
-        await this.authSessionService.findSessionByToken(refreshToken);
-
-      if (!session?.user.isActive) {
-        throw new UnauthorizedException('Invalid refresh session.');
-      }
-
-      const now = new Date();
-
-      if (
-        session.consumedAt ||
-        session.revokedAt ||
-        session.expiresAt.getTime() <= now.getTime()
-      ) {
-        await this.revokeRefreshTokenFamily(session.tokenFamilyId, now);
-        throw new UnauthorizedException('Invalid refresh session.');
-      }
+      const issuedSession = await this.authSessionService.rotateRefreshToken(
+        refreshToken,
+        context,
+      );
+      const session = issuedSession.session;
 
       const activeMembership =
         session.activeMembership?.isActive === true
           ? session.activeMembership
           : null;
-      const replacementSessionId = randomUUID();
-      const accessToken = await this.signAccessToken(
+      const accessToken = await this.authTokenService.signAccessToken(
         session.userId,
-        replacementSessionId,
+        session.id,
         activeMembership,
       );
-
-      const issuedSession = await this.prisma.$transaction(
-        async (tx: Prisma.TransactionClient) => {
-          const consumed = await tx.authSession.updateMany({
-            where: {
-              id: session.id,
-              consumedAt: null,
-              revokedAt: null,
-              expiresAt: { gt: now },
-            },
-            data: {
-              consumedAt: now,
-              lastUsedUserAgent: context.userAgent,
-              lastUsedIp: context.ipAddress,
-            },
-          });
-
-          if (consumed.count !== 1) {
-            return null;
-          }
-
-          const replacement = await this.authSessionService.issueSession({
-            prisma: tx,
-            sessionId: replacementSessionId,
-            userId: session.userId,
-            activeMembershipId: activeMembership?.id,
-            tokenFamilyId: session.tokenFamilyId,
-            userAgent: context.userAgent,
-            ipAddress: context.ipAddress,
-            now,
-          });
-
-          await tx.authSession.update({
-            where: { id: session.id },
-            data: { replacedBySessionId: replacement.session.id },
-          });
-
-          return replacement;
-        },
-      );
-
-      if (!issuedSession) {
-        throw new UnauthorizedException('Invalid refresh session.');
-      }
 
       return this.toSessionResponse(
         accessToken,
         issuedSession,
         activeMembership,
-        session.user.mustChangePassword,
+        session.user,
       );
     } catch (error) {
       this.rethrowAuthError(error, 'refresh');
@@ -263,7 +194,6 @@ export class AuthService {
         where: {
           id: user.sessionId,
           userId: user.id,
-          consumedAt: null,
           revokedAt: null,
           expiresAt: { gt: new Date() },
         },
@@ -331,16 +261,10 @@ export class AuthService {
     user: Pick<AuthenticatedUser, 'id' | 'sessionId' | 'mustChangePassword'>,
     membership: ActiveMembershipContext,
   ): Promise<LoginResponseDto> {
-    const accessToken = await this.signAccessToken(
-      user.id,
-      user.sessionId,
-      membership,
-    );
     const updated = await this.prisma.authSession.updateMany({
       where: {
         id: user.sessionId,
         userId: user.id,
-        consumedAt: null,
         revokedAt: null,
         expiresAt: { gt: new Date() },
       },
@@ -351,15 +275,31 @@ export class AuthService {
       throw new UnauthorizedException('Invalid access session.');
     }
 
+    const identity = await this.prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: { id: true, name: true, email: true },
+    });
+    const accessToken = await this.authTokenService.signAccessToken(
+      user.id,
+      user.sessionId,
+      membership,
+    );
+
     return this.toTokenResponse(
       accessToken,
       membership,
+      identity,
       user.mustChangePassword,
     );
   }
 
   async issueAuthenticatedSession(
-    userId: string,
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      mustChangePassword: boolean;
+    },
     activeMembershipId?: string,
     context: AuthRequestContext = {},
     knownMembership?: ActiveMembershipContext | null,
@@ -368,38 +308,33 @@ export class AuthService {
   ): Promise<AuthSessionResponse> {
     const membership =
       knownMembership === undefined
-        ? await this.findActiveMembership(userId, activeMembershipId)
+        ? await this.findActiveMembership(user.id, activeMembershipId)
         : knownMembership;
     const mustChangePassword =
       knownMustChangePassword ??
       (
-        await this.prisma.user.findUniqueOrThrow({
-          where: { id: userId },
+        await (prisma ?? this.prisma).user.findUniqueOrThrow({
+          where: { id: user.id },
           select: { mustChangePassword: true },
         })
       ).mustChangePassword;
 
-    const sessionId = randomUUID();
-    const accessToken = await this.signAccessToken(
-      userId,
-      sessionId,
-      membership,
-    );
     const issuedSession = await this.authSessionService.issueSession({
       prisma,
-      sessionId,
-      userId,
+      userId: user.id,
       activeMembershipId: membership?.id,
-      userAgent: context.userAgent,
-      ipAddress: context.ipAddress,
+      context,
     });
-
-    return this.toSessionResponse(
-      accessToken,
-      issuedSession,
+    const accessToken = await this.authTokenService.signAccessToken(
+      user.id,
+      issuedSession.session.id,
       membership,
-      mustChangePassword,
     );
+
+    return this.toSessionResponse(accessToken, issuedSession, membership, {
+      ...user,
+      mustChangePassword,
+    });
   }
 
   async changePassword(
@@ -451,6 +386,13 @@ export class AuthService {
         },
         data: { revokedAt },
       });
+      await tx.refreshToken.updateMany({
+        where: {
+          session: { userId: user.id, id: { not: user.sessionId } },
+          revokedAt: null,
+        },
+        data: { revokedAt },
+      });
     });
 
     this.logger.log(
@@ -463,35 +405,7 @@ export class AuthService {
     context: AuthRequestContext = {},
   ): Promise<void> {
     try {
-      if (!refreshToken) {
-        return;
-      }
-
-      const session =
-        await this.authSessionService.findSessionByToken(refreshToken);
-
-      if (
-        !session?.user.isActive ||
-        session.consumedAt ||
-        session.revokedAt ||
-        session.expiresAt.getTime() <= Date.now()
-      ) {
-        return;
-      }
-
-      await this.prisma.authSession.updateMany({
-        where: {
-          id: session.id,
-          consumedAt: null,
-          revokedAt: null,
-          expiresAt: { gt: new Date() },
-        },
-        data: {
-          revokedAt: new Date(),
-          lastUsedUserAgent: context.userAgent,
-          lastUsedIp: context.ipAddress,
-        },
-      });
+      await this.authSessionService.revokeByRefreshToken(refreshToken, context);
     } catch (error) {
       this.rethrowDependencyError(error, 'logout');
     }
@@ -499,16 +413,7 @@ export class AuthService {
 
   async logoutAll(userId: string): Promise<void> {
     try {
-      const revokedAt = new Date();
-
-      await this.prisma.authSession.updateMany({
-        where: {
-          userId,
-          revokedAt: null,
-          expiresAt: { gt: revokedAt },
-        },
-        data: { revokedAt },
-      });
+      await this.authSessionService.revokeAllUserSessions(userId);
     } catch (error) {
       this.rethrowDependencyError(error, 'logout-all');
     }
@@ -560,26 +465,6 @@ export class AuthService {
     });
   }
 
-  private async signAccessToken(
-    userId: string,
-    sessionId: string,
-    membership: ActiveMembershipContext | null,
-  ): Promise<string> {
-    return this.jwtService.signAsync(
-      {
-        sub: userId,
-        sid: sessionId,
-        ...(membership
-          ? {
-              wid: membership.workshopId,
-              mid: membership.id,
-            }
-          : {}),
-      },
-      { expiresIn: this.authConfig.accessTokenTtl as never },
-    );
-  }
-
   private toSessionResponse(
     accessToken: string,
     issuedSession: {
@@ -587,10 +472,20 @@ export class AuthService {
       expiresAt: Date;
     },
     membership: ActiveMembershipContext | null,
-    mustChangePassword: boolean,
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      mustChangePassword: boolean;
+    },
   ): AuthSessionResponse {
     return {
-      ...this.toTokenResponse(accessToken, membership, mustChangePassword),
+      ...this.toTokenResponse(
+        accessToken,
+        membership,
+        user,
+        user.mustChangePassword,
+      ),
       refreshToken: issuedSession.refreshToken,
       refreshTokenExpiresAt: issuedSession.expiresAt,
     };
@@ -599,11 +494,13 @@ export class AuthService {
   private toTokenResponse(
     accessToken: string,
     membership: ActiveMembershipContext | null,
+    user: { id: string; name: string; email: string },
     mustChangePassword: boolean,
   ): LoginResponseDto {
     return {
       accessToken,
       tokenType: 'Bearer',
+      user,
       activeWorkshop: this.toActiveWorkshop(membership),
       requiresWorkshopSelection: membership === null,
       requiresPasswordChange: mustChangePassword,
@@ -622,20 +519,12 @@ export class AuthService {
       membershipId: membership.id,
       name: membership.workshop.name,
       role: membership.role.name,
-    };
-  }
-
-  private async revokeRefreshTokenFamily(
-    tokenFamilyId: string,
-    revokedAt: Date,
-  ): Promise<void> {
-    await this.prisma.authSession.updateMany({
-      where: {
-        tokenFamilyId,
-        revokedAt: null,
+      profile: {
+        displayName: membership.displayName,
+        phone: membership.phone,
+        address: membership.address,
       },
-      data: { revokedAt },
-    });
+    };
   }
 
   private rethrowAuthError(error: unknown, operation: string): never {

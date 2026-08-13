@@ -41,6 +41,11 @@ Organize backend work by modules under `src/modules` when the app grows beyond t
 
 Use `src/common` for shared guards, decorators, filters, interceptors, and pipes. Use `src/config` for environment and provider configuration.
 
+- Keep focused auth services under `src/modules/auth/services/<responsibility>/<responsibility>.ts`; do not add a `.service` suffix to these nested service filenames.
+- Model an authenticated login as a stable server-side session. Access tokens reference that session, while refresh tokens are separate rotating credentials owned and validated by the backend.
+- Refresh-token rotation must not invalidate otherwise valid access tokens from the same session. Keep replay detection and bounded concurrent-refresh handling in the backend, never in frontend coordination code.
+- Keep reusable auth types and interfaces in `src/modules/auth/model`, not inside service implementations.
+
 ## Business Rules
 
 - A service order always belongs to one customer and one vehicle.

@@ -7,11 +7,12 @@ import { WorkshopContextGuard } from '../../common/guards/workshop-context.guard
 import { PasswordHasherService } from '../../common/security/password-hasher.service';
 import { getAuthConfig } from '../../config/auth.config';
 import { PrismaModule } from '../../prisma/prisma.module';
-import { AuthSessionService } from './auth-session.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { RefreshCookieService } from './refresh-cookie.service';
+import { AuthSessionService } from './services/session/session';
+import { AuthTokenService } from './services/token/token';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { RefreshCookieService } from './refresh-cookie.service';
   providers: [
     AuthService,
     AuthSessionService,
+    AuthTokenService,
     JwtStrategy,
     JwtAuthGuard,
     RolesGuard,

@@ -14,6 +14,7 @@ describe('JwtStrategy tenant resolution', () => {
 
   beforeAll(() => {
     process.env.JWT_SECRET = 'test-jwt-secret';
+    process.env.AUTH_REFRESH_TOKEN_SECRET = 'test-refresh-token-secret';
     process.env.JWT_ACCESS_TOKEN_TTL = '15m';
   });
 

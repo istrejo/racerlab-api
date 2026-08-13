@@ -5,6 +5,7 @@ describe('getAuthConfig', () => {
     expect(
       getAuthConfig({
         JWT_SECRET: 'super-secret',
+        AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
         JWT_ACCESS_TOKEN_TTL: '15m',
         JWT_REFRESH_TOKEN_TTL: '30d',
         AUTH_REFRESH_COOKIE_NAME: 'rl_refresh',
@@ -14,6 +15,7 @@ describe('getAuthConfig', () => {
       }),
     ).toEqual({
       jwtSecret: 'super-secret',
+      refreshTokenSecret: 'refresh-secret',
       accessTokenTtl: '15m',
       refreshTokenTtl: '30d',
       refreshCookie: {
@@ -31,6 +33,7 @@ describe('getAuthConfig', () => {
     expect(
       getAuthConfig({
         JWT_SECRET: 'super-secret',
+        AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
         JWT_ACCESS_TOKEN_TTL: '900',
         JWT_REFRESH_TOKEN_TTL: '2592000',
         AUTH_REFRESH_COOKIE_NAME: 'rl_refresh',
@@ -39,6 +42,7 @@ describe('getAuthConfig', () => {
       }),
     ).toEqual({
       jwtSecret: 'super-secret',
+      refreshTokenSecret: 'refresh-secret',
       accessTokenTtl: 900,
       refreshTokenTtl: 2592000,
       refreshCookie: {
@@ -55,6 +59,7 @@ describe('getAuthConfig', () => {
     expect(
       getAuthConfig({
         JWT_SECRET: 'super-secret',
+        AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
         JWT_ACCESS_TOKEN_TTL: '15m',
         JWT_REFRESH_TOKEN_TTL: '30d',
         AUTH_REFRESH_COOKIE_NAME: 'rl_refresh',
@@ -64,6 +69,7 @@ describe('getAuthConfig', () => {
       }),
     ).toEqual({
       jwtSecret: 'super-secret',
+      refreshTokenSecret: 'refresh-secret',
       accessTokenTtl: '15m',
       refreshTokenTtl: '30d',
       refreshCookie: {
@@ -80,10 +86,12 @@ describe('getAuthConfig', () => {
     expect(
       getAuthConfig({
         JWT_SECRET: 'super-secret',
+        AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
         JWT_ACCESS_TOKEN_TTL: '15m',
       }),
     ).toEqual({
       jwtSecret: 'super-secret',
+      refreshTokenSecret: 'refresh-secret',
       accessTokenTtl: '15m',
       refreshTokenTtl: '30d',
       refreshCookie: {
@@ -100,7 +108,9 @@ describe('getAuthConfig', () => {
     expect(
       getAuthConfig({
         JWT_SECRET: 'super-secret',
+        AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
         JWT_ACCESS_TOKEN_TTL: '15m',
+        AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
         NODE_ENV: 'production',
       }).refreshCookie.secure,
     ).toBe(true);
@@ -122,12 +132,21 @@ describe('getAuthConfig', () => {
       caseName: 'JWT_ACCESS_TOKEN_TTL is missing',
       env: {
         JWT_SECRET: 'super-secret',
+        AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
         JWT_REFRESH_TOKEN_TTL: '30d',
         AUTH_REFRESH_COOKIE_NAME: 'rl_refresh',
         AUTH_REFRESH_COOKIE_SECURE: 'true',
         AUTH_REFRESH_COOKIE_SAME_SITE: 'strict',
       },
       message: 'JWT_ACCESS_TOKEN_TTL is required.',
+    },
+    {
+      caseName: 'AUTH_REFRESH_TOKEN_SECRET is missing',
+      env: {
+        JWT_SECRET: 'super-secret',
+        JWT_ACCESS_TOKEN_TTL: '15m',
+      },
+      message: 'AUTH_REFRESH_TOKEN_SECRET is required.',
     },
   ])('fails fast when %s', ({ env, message }) => {
     expect(() => getAuthConfig(env)).toThrow(message);
@@ -149,6 +168,7 @@ describe('getAuthConfig', () => {
   ])('fails fast when $field is malformed: $ttl', ({ field, ttl, message }) => {
     const env = {
       JWT_SECRET: 'super-secret',
+      AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
       JWT_ACCESS_TOKEN_TTL: '15m',
       JWT_REFRESH_TOKEN_TTL: '30d',
       AUTH_REFRESH_COOKIE_NAME: 'rl_refresh',
@@ -169,6 +189,7 @@ describe('getAuthConfig', () => {
       expect(() =>
         getAuthConfig({
           JWT_SECRET: 'super-secret',
+          AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
           JWT_ACCESS_TOKEN_TTL: '15m',
           JWT_REFRESH_TOKEN_TTL: '30d',
           AUTH_REFRESH_COOKIE_NAME: 'rl_refresh',
@@ -185,6 +206,7 @@ describe('getAuthConfig', () => {
       expect(() =>
         getAuthConfig({
           JWT_SECRET: 'super-secret',
+          AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
           JWT_ACCESS_TOKEN_TTL: '15m',
           JWT_REFRESH_TOKEN_TTL: '30d',
           AUTH_REFRESH_COOKIE_NAME: 'rl_refresh',

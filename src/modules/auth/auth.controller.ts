@@ -90,6 +90,7 @@ export class AuthController {
     return {
       accessToken: session.accessToken,
       tokenType: session.tokenType,
+      user: session.user,
       activeWorkshop: session.activeWorkshop,
       requiresWorkshopSelection: session.requiresWorkshopSelection,
       requiresPasswordChange: session.requiresPasswordChange,
@@ -131,6 +132,7 @@ export class AuthController {
     return {
       accessToken: session.accessToken,
       tokenType: session.tokenType,
+      user: session.user,
       activeWorkshop: session.activeWorkshop,
       requiresWorkshopSelection: session.requiresWorkshopSelection,
       requiresPasswordChange: session.requiresPasswordChange,
@@ -173,6 +175,7 @@ export class AuthController {
     return {
       accessToken: session.accessToken,
       tokenType: session.tokenType,
+      user: session.user,
       activeWorkshop: session.activeWorkshop,
       requiresWorkshopSelection: session.requiresWorkshopSelection,
       requiresPasswordChange: session.requiresPasswordChange,

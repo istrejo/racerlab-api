@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   BadRequestException,
   ConflictException,
@@ -17,8 +17,8 @@ describe('AuthService workshop sessions', () => {
     verify: jest.fn().mockResolvedValue(true),
     hash: jest.fn(),
   };
-  const jwtService = {
-    signAsync: jest.fn().mockResolvedValue('access-token'),
+  const authTokenService = {
+    signAccessToken: jest.fn().mockResolvedValue('access-token'),
   };
   const authSessionService = {
     issueSession: jest.fn().mockResolvedValue({
@@ -26,7 +26,9 @@ describe('AuthService workshop sessions', () => {
       expiresAt: new Date('2026-08-26T00:00:00.000Z'),
       session: { id: sessionId },
     }),
-    findSessionByToken: jest.fn(),
+    rotateRefreshToken: jest.fn(),
+    revokeByRefreshToken: jest.fn(),
+    revokeAllUserSessions: jest.fn(),
   };
   const prisma = {
     user: {
@@ -42,12 +44,14 @@ describe('AuthService workshop sessions', () => {
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    refreshToken: { updateMany: jest.fn() },
     $transaction: jest.fn(),
   };
   let service: AuthService;
 
   beforeAll(() => {
     process.env.JWT_SECRET = 'test-jwt-secret';
+    process.env.AUTH_REFRESH_TOKEN_SECRET = 'test-refresh-token-secret';
     process.env.JWT_ACCESS_TOKEN_TTL = '15m';
   });
 
@@ -56,15 +60,20 @@ describe('AuthService workshop sessions', () => {
     service = new AuthService(
       prisma as never,
       passwordHasher,
-      jwtService as never,
       authSessionService as never,
+      authTokenService as never,
     );
   });
 
   it('creates a global user and neutral session in one transaction', async () => {
     passwordHasher.hash.mockResolvedValue('signup-hash');
     prisma.user.findFirst.mockResolvedValue(null);
-    prisma.user.create.mockResolvedValue({ id: userId });
+    prisma.user.create.mockResolvedValue({
+      id: userId,
+      name: 'Ada Lovelace',
+      email: 'ada@example.com',
+      mustChangePassword: false,
+    });
     prisma.$transaction.mockImplementation(
       (callback: (tx: typeof prisma) => unknown) => callback(prisma),
     );
@@ -101,7 +110,12 @@ describe('AuthService workshop sessions', () => {
         isActive: true,
         mustChangePassword: false,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        mustChangePassword: true,
+      },
     });
     expect(authSessionService.issueSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -134,7 +148,12 @@ describe('AuthService workshop sessions', () => {
     let committed = false;
     passwordHasher.hash.mockResolvedValue('signup-hash');
     prisma.user.findFirst.mockResolvedValue(null);
-    prisma.user.create.mockResolvedValue({ id: userId });
+    prisma.user.create.mockResolvedValue({
+      id: userId,
+      name: 'Ada Lovelace',
+      email: 'ada@example.com',
+      mustChangePassword: false,
+    });
     authSessionService.issueSession.mockRejectedValueOnce(
       new Error('session insert failed'),
     );
@@ -164,6 +183,7 @@ describe('AuthService workshop sessions', () => {
     prisma.user.findMany.mockResolvedValue([
       {
         id: userId,
+        name: 'Ada Lovelace',
         email: 'ada@example.com',
         passwordHash: 'hash',
         isActive: true,
@@ -193,22 +213,14 @@ describe('AuthService workshop sessions', () => {
     });
     expect(authSessionService.issueSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        sessionId: expect.any(String),
         userId,
         activeMembershipId: membershipId,
       }),
     );
-    expect(jwtService.signAsync).toHaveBeenCalledWith(
-      {
-        sub: userId,
-        sid: expect.any(String),
-        wid: workshopId,
-        mid: membershipId,
-      },
-      expect.any(Object),
-    );
-    expect(authSessionService.issueSession.mock.calls[0][0].sessionId).toBe(
-      jwtService.signAsync.mock.calls[0][0].sid,
+    expect(authTokenService.signAccessToken).toHaveBeenCalledWith(
+      userId,
+      sessionId,
+      expect.objectContaining({ id: membershipId }),
     );
   });
 
@@ -216,6 +228,7 @@ describe('AuthService workshop sessions', () => {
     prisma.user.findMany.mockResolvedValue([
       {
         id: userId,
+        name: 'Ada Lovelace',
         email: 'ada@example.com',
         passwordHash: 'hash',
         isActive: true,
@@ -233,17 +246,14 @@ describe('AuthService workshop sessions', () => {
     });
     expect(authSessionService.issueSession).toHaveBeenCalledWith(
       expect.objectContaining({
-        sessionId: expect.any(String),
         userId,
         activeMembershipId: undefined,
       }),
     );
-    expect(jwtService.signAsync).toHaveBeenCalledWith(
-      { sub: userId, sid: expect.any(String) },
-      expect.any(Object),
-    );
-    expect(authSessionService.issueSession.mock.calls[0][0].sessionId).toBe(
-      jwtService.signAsync.mock.calls[0][0].sid,
+    expect(authTokenService.signAccessToken).toHaveBeenCalledWith(
+      userId,
+      sessionId,
+      null,
     );
   });
 
@@ -323,7 +333,6 @@ describe('AuthService workshop sessions', () => {
       where: {
         id: sessionId,
         userId,
-        consumedAt: null,
         revokedAt: null,
         expiresAt: { gt: expect.any(Date) },
       },
@@ -483,70 +492,35 @@ describe('AuthService workshop sessions', () => {
     expect(passwordHasher.hash).not.toHaveBeenCalled();
   });
 
-  it('does not revoke the replacement family when another refresh already in flight wins the rotation', async () => {
-    const refreshSession = {
-      id: sessionId,
-      userId,
-      tokenFamilyId: 'token-family-id',
+  it('issues a new access token for the same stable session during refresh', async () => {
+    authSessionService.rotateRefreshToken.mockResolvedValue({
+      refreshToken: 'replacement-refresh-token',
       expiresAt: new Date('2026-08-27T12:00:00.000Z'),
-      consumedAt: null,
-      revokedAt: null,
-      user: {
-        id: userId,
-        email: 'ada@example.com',
-        isActive: true,
-        mustChangePassword: false,
+      session: {
+        id: sessionId,
+        userId,
+        user: {
+          id: userId,
+          name: 'Ada Lovelace',
+          email: 'ada@example.com',
+          isActive: true,
+          mustChangePassword: false,
+        },
+        activeMembership: null,
       },
-      activeMembership: null,
-    };
+    });
 
-    authSessionService.findSessionByToken.mockResolvedValue(refreshSession);
-    prisma.authSession.updateMany.mockResolvedValue({ count: 0 });
-    prisma.$transaction.mockImplementation(
-      (callback: (tx: typeof prisma) => unknown) => callback(prisma),
-    );
-
-    await expect(service.refresh('old-refresh-token')).rejects.toEqual(
-      new UnauthorizedException('Invalid refresh session.'),
-    );
-
-    expect(prisma.authSession.updateMany).toHaveBeenCalledTimes(1);
-    expect(prisma.authSession.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ id: sessionId }),
-      }),
-    );
-    expect(authSessionService.issueSession).not.toHaveBeenCalled();
-  });
-
-  it('revokes the family when a refresh token is replayed after its rotation completed', async () => {
-    authSessionService.findSessionByToken.mockResolvedValue({
-      id: sessionId,
+    await expect(
+      service.refresh('current-refresh-token'),
+    ).resolves.toMatchObject({
+      accessToken: 'access-token',
+      refreshToken: 'replacement-refresh-token',
+      user: { id: userId, name: 'Ada Lovelace' },
+    });
+    expect(authTokenService.signAccessToken).toHaveBeenCalledWith(
       userId,
-      tokenFamilyId: 'token-family-id',
-      expiresAt: new Date('2026-08-27T12:00:00.000Z'),
-      consumedAt: new Date('2026-07-27T12:00:00.000Z'),
-      revokedAt: null,
-      user: {
-        id: userId,
-        email: 'ada@example.com',
-        isActive: true,
-        mustChangePassword: false,
-      },
-      activeMembership: null,
-    });
-    prisma.authSession.updateMany.mockResolvedValue({ count: 1 });
-
-    await expect(service.refresh('replayed-refresh-token')).rejects.toEqual(
-      new UnauthorizedException('Invalid refresh session.'),
+      sessionId,
+      null,
     );
-
-    expect(prisma.authSession.updateMany).toHaveBeenCalledWith({
-      where: {
-        tokenFamilyId: 'token-family-id',
-        revokedAt: null,
-      },
-      data: { revokedAt: expect.any(Date) },
-    });
   });
 });

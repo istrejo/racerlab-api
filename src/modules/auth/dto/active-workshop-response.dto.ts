@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+import { MeProfileResponseDto } from './me-response.dto';
 
 export class ActiveWorkshopResponseDto {
   @ApiProperty({ format: 'uuid' })
@@ -13,4 +14,7 @@ export class ActiveWorkshopResponseDto {
 
   @ApiProperty({ enum: UserRole, example: UserRole.OWNER })
   role!: UserRole;
+
+  @ApiProperty({ type: MeProfileResponseDto })
+  profile!: MeProfileResponseDto;
 }

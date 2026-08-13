@@ -131,6 +131,7 @@ describe('Workshop tenancy (e2e)', () => {
   beforeEach(async () => {
     restoreJwtTestEnv = applyJwtTestEnv({
       JWT_SECRET: 'integration-secret',
+      AUTH_REFRESH_TOKEN_SECRET: 'integration-refresh-secret',
       JWT_ACCESS_TOKEN_TTL: '15m',
     });
     activeMembershipId = null;
@@ -184,7 +185,7 @@ describe('Workshop tenancy (e2e)', () => {
               ...data,
               memberships: [],
             };
-            return { id: signupUserId };
+            return registeredUser;
           },
         ),
         findUnique: jest
@@ -198,6 +199,13 @@ describe('Workshop tenancy (e2e)', () => {
                   passwordHash: 'hash',
                   isActive: true,
                 },
+          ),
+        findUniqueOrThrow: jest
+          .fn()
+          .mockImplementation(({ where }: { where: { id: string } }) =>
+            where.id === signupUserId
+              ? registeredUser
+              : { id: userId, name: 'Ada', email: 'ada@example.com' },
           ),
         update: jest.fn().mockImplementation(
           ({
@@ -222,8 +230,8 @@ describe('Workshop tenancy (e2e)', () => {
         create: jest
           .fn()
           .mockImplementation(({ data }: AuthSessionCreateArgs) => ({
-            id: sessionId,
             ...data,
+            id: sessionId,
           })),
         findFirst: jest
           .fn()
@@ -267,6 +275,9 @@ describe('Workshop tenancy (e2e)', () => {
             }
             return { count: 1 };
           }),
+      },
+      refreshToken: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       membership: {
         create: jest.fn().mockImplementation(

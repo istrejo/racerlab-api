@@ -13,6 +13,7 @@ export type RefreshCookieConfig = {
 
 export type AuthConfig = {
   jwtSecret: string;
+  refreshTokenSecret: string;
   accessTokenTtl: number | JwtDurationString;
   refreshTokenTtl: number | JwtDurationString;
   refreshCookie: RefreshCookieConfig;
@@ -20,6 +21,7 @@ export type AuthConfig = {
 
 type AuthEnv = {
   JWT_SECRET?: string;
+  AUTH_REFRESH_TOKEN_SECRET?: string;
   JWT_ACCESS_TOKEN_TTL?: string;
   JWT_REFRESH_TOKEN_TTL?: string;
   AUTH_REFRESH_COOKIE_NAME?: string;
@@ -85,6 +87,7 @@ function parseSameSite(value: string): SameSite {
 
 export function getAuthConfig(env: AuthEnv = process.env): AuthConfig {
   const jwtSecret = env.JWT_SECRET?.trim();
+  const refreshTokenSecret = env.AUTH_REFRESH_TOKEN_SECRET?.trim();
   const accessTokenTtl = env.JWT_ACCESS_TOKEN_TTL?.trim();
   const refreshTokenTtl = env.JWT_REFRESH_TOKEN_TTL?.trim();
   const refreshCookieName = env.AUTH_REFRESH_COOKIE_NAME?.trim();
@@ -100,8 +103,13 @@ export function getAuthConfig(env: AuthEnv = process.env): AuthConfig {
     throw new Error('JWT_ACCESS_TOKEN_TTL is required.');
   }
 
+  if (!refreshTokenSecret) {
+    throw new Error('AUTH_REFRESH_TOKEN_SECRET is required.');
+  }
+
   return {
     jwtSecret,
+    refreshTokenSecret,
     accessTokenTtl: parseJwtTtl(accessTokenTtl, 'JWT_ACCESS_TOKEN_TTL'),
     refreshTokenTtl: parseJwtTtl(
       refreshTokenTtl || DEFAULT_REFRESH_TOKEN_TTL,

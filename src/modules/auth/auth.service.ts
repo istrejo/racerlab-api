@@ -26,12 +26,19 @@ import { AuthTokenService } from './services/token/token';
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
+  // Pre-computed sentinel hash used in login() to run argon2.verify even
+  // when no user matches the email, so response timing is constant and
+  // cannot be used to enumerate valid email addresses.
+  private readonly sentinelHash: Promise<string>;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly passwordHasher: PasswordHasherService,
     private readonly authSessionService: AuthSessionService,
     private readonly authTokenService: AuthTokenService,
-  ) {}
+  ) {
+    this.sentinelHash = this.passwordHasher.hash('__sentinel__');
+  }
 
   async signup(
     dto: SignupDto,
@@ -101,16 +108,17 @@ export class AuthService {
       const normalizedEmail = normalizeEmail(dto.email);
       const user = await this.findUserForLogin(normalizedEmail);
 
-      if (!user?.isActive) {
-        throw new UnauthorizedException('Invalid credentials.');
-      }
-
+      // Always run argon2.verify regardless of whether the user was found.
+      // When no user matches, we verify against the pre-computed sentinel hash
+      // so that response timing is constant and cannot be used to enumerate
+      // valid email addresses via timing side-channel.
+      const hashToVerify = user?.passwordHash ?? (await this.sentinelHash);
       const passwordMatches = await this.passwordHasher.verify(
         dto.password,
-        user.passwordHash,
+        hashToVerify,
       );
 
-      if (!passwordMatches) {
+      if (!user?.isActive || !passwordMatches) {
         throw new UnauthorizedException('Invalid credentials.');
       }
 

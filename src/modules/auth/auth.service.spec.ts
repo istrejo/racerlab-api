@@ -478,7 +478,9 @@ describe('AuthService workshop sessions', () => {
         'The new password must differ from the current password.',
       ),
     );
-    expect(passwordHasher.hash).not.toHaveBeenCalled();
+    // Constructor calls hash() once for the sentinel; assert the new
+    // password itself was never hashed (early rejection before hashing).
+    expect(passwordHasher.hash).not.toHaveBeenCalledWith('same-secret');
   });
 
   it('issues a new access token for the same stable session during refresh', async () => {

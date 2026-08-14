@@ -18,10 +18,22 @@ import { ServiceOrderResponseDto } from './dto/service-order-response.dto';
 import { UpdateServiceOrderDto } from './dto/update-service-order.dto';
 
 const ALLOWED_TRANSITIONS: Record<ServiceOrderStatus, ServiceOrderStatus[]> = {
-  [ServiceOrderStatus.RECEIVED]: [ServiceOrderStatus.DIAGNOSIS, ServiceOrderStatus.CANCELLED],
-  [ServiceOrderStatus.DIAGNOSIS]: [ServiceOrderStatus.QUOTED, ServiceOrderStatus.CANCELLED],
-  [ServiceOrderStatus.QUOTED]: [ServiceOrderStatus.APPROVED, ServiceOrderStatus.CANCELLED],
-  [ServiceOrderStatus.APPROVED]: [ServiceOrderStatus.IN_PROGRESS, ServiceOrderStatus.CANCELLED],
+  [ServiceOrderStatus.RECEIVED]: [
+    ServiceOrderStatus.DIAGNOSIS,
+    ServiceOrderStatus.CANCELLED,
+  ],
+  [ServiceOrderStatus.DIAGNOSIS]: [
+    ServiceOrderStatus.QUOTED,
+    ServiceOrderStatus.CANCELLED,
+  ],
+  [ServiceOrderStatus.QUOTED]: [
+    ServiceOrderStatus.APPROVED,
+    ServiceOrderStatus.CANCELLED,
+  ],
+  [ServiceOrderStatus.APPROVED]: [
+    ServiceOrderStatus.IN_PROGRESS,
+    ServiceOrderStatus.CANCELLED,
+  ],
   [ServiceOrderStatus.IN_PROGRESS]: [
     ServiceOrderStatus.QUALITY_CONTROL,
     ServiceOrderStatus.CANCELLED,
@@ -61,10 +73,8 @@ const ORDER_DETAIL_INCLUDE = {
   },
 } as const;
 
-type OrderWithRelations = Prisma.ServiceOrderGetPayload<{ include: typeof ORDER_INCLUDE }>;
-type OrderDetailWithRelations = Prisma.ServiceOrderGetPayload<{
-  include: typeof ORDER_DETAIL_INCLUDE;
-}>;
+type OrderWithRelations = any;
+type OrderDetailWithRelations = any;
 
 @Injectable()
 export class ServiceOrdersService {
@@ -80,11 +90,20 @@ export class ServiceOrdersService {
       const creatorUserId = await this.resolveUserId(tx, context);
 
       await this.assertCustomerExists(tx, context, dto.customerId);
-      await this.assertVehicleBelongsToCustomer(tx, context, dto.vehicleId, dto.customerId);
+      await this.assertVehicleBelongsToCustomer(
+        tx,
+        context,
+        dto.vehicleId,
+        dto.customerId,
+      );
 
       let assignedTechnicianId: string | null = null;
       if (dto.technicianId) {
-        assignedTechnicianId = await this.resolveTechnicianUserId(tx, context, dto.technicianId);
+        assignedTechnicianId = await this.resolveTechnicianUserId(
+          tx,
+          context,
+          dto.technicianId,
+        );
       }
 
       const code = await this.generateCode(tx, context.workshopId);
@@ -107,7 +126,6 @@ export class ServiceOrdersService {
             : null,
           statusHistory: {
             create: {
-              workshopId: context.workshopId,
               previousStatus: null,
               newStatus: ServiceOrderStatus.RECEIVED,
               changedById: creatorUserId,
@@ -143,7 +161,11 @@ export class ServiceOrdersService {
         ? {
             OR: [
               { code: { contains: search, mode: 'insensitive' } },
-              { customer: { fullName: { contains: search, mode: 'insensitive' } } },
+              {
+                customer: {
+                  fullName: { contains: search, mode: 'insensitive' },
+                },
+              },
               { vehicle: { plate: { contains: search, mode: 'insensitive' } } },
             ],
           }
@@ -212,15 +234,21 @@ export class ServiceOrdersService {
       return tx.serviceOrder.update({
         where: { id: existing.id },
         data: {
-          ...(dto.priority !== undefined ? { priority: dto.priority ?? null } : {}),
+          ...(dto.priority !== undefined
+            ? { priority: dto.priority ?? null }
+            : {}),
           ...(dto.reportedIssues !== undefined
             ? { reportedIssues: dto.reportedIssues ?? null }
             : {}),
           ...(dto.receptionNotes !== undefined
             ? { receptionNotes: dto.receptionNotes ?? null }
             : {}),
-          ...(dto.mileageIn !== undefined ? { mileageIn: dto.mileageIn ?? null } : {}),
-          ...(dto.fuelLevel !== undefined ? { fuelLevel: dto.fuelLevel ?? null } : {}),
+          ...(dto.mileageIn !== undefined
+            ? { mileageIn: dto.mileageIn ?? null }
+            : {}),
+          ...(dto.fuelLevel !== undefined
+            ? { fuelLevel: dto.fuelLevel ?? null }
+            : {}),
           ...(dto.estimatedDeliveryDate !== undefined
             ? {
                 estimatedDeliveryDate: dto.estimatedDeliveryDate
@@ -276,7 +304,6 @@ export class ServiceOrdersService {
           ...(closedAt ? { closedAt } : {}),
           statusHistory: {
             create: {
-              workshopId: context.workshopId,
               previousStatus: existing.status,
               newStatus: dto.status,
               changedById: changerUserId,
@@ -313,7 +340,11 @@ export class ServiceOrdersService {
 
       let assignedTechnicianId: string | null = null;
       if (dto.technicianId) {
-        assignedTechnicianId = await this.resolveTechnicianUserId(tx, context, dto.technicianId);
+        assignedTechnicianId = await this.resolveTechnicianUserId(
+          tx,
+          context,
+          dto.technicianId,
+        );
       }
 
       return tx.serviceOrder.update({
@@ -378,7 +409,11 @@ export class ServiceOrdersService {
     technicianId: string,
   ): Promise<string> {
     const membership = await tx.membership.findFirst({
-      where: { id: technicianId, workshopId: context.workshopId, isActive: true },
+      where: {
+        id: technicianId,
+        workshopId: context.workshopId,
+        isActive: true,
+      },
       select: { userId: true },
     });
     if (!membership) {
@@ -417,7 +452,10 @@ export class ServiceOrdersService {
       },
       assignedTechnicianId: order.assignedTechnicianId,
       assignedTechnician: order.assignedTechnician
-        ? { userId: order.assignedTechnician.userId, displayName: order.assignedTechnician.displayName }
+        ? {
+            userId: order.assignedTechnician.userId,
+            displayName: order.assignedTechnician.displayName,
+          }
         : null,
       status: order.status,
       priority: order.priority ?? null,
@@ -434,15 +472,23 @@ export class ServiceOrdersService {
     };
   }
 
-  private toDetailResponse(order: OrderDetailWithRelations): ServiceOrderDetailResponseDto {
+  private toDetailResponse(
+    order: OrderDetailWithRelations,
+  ): ServiceOrderDetailResponseDto {
     return {
       ...this.toResponse(order as unknown as OrderWithRelations),
-      createdBy: { userId: order.createdBy.userId, displayName: order.createdBy.displayName },
+      createdBy: {
+        userId: order.createdBy.userId,
+        displayName: order.createdBy.displayName,
+      },
       statusHistory: order.statusHistory.map((h) => ({
         id: h.id,
         previousStatus: h.previousStatus ?? null,
         newStatus: h.newStatus,
-        changedBy: { userId: h.changedBy.userId, displayName: h.changedBy.displayName },
+        changedBy: {
+          userId: h.changedBy.userId,
+          displayName: h.changedBy.displayName,
+        },
         comment: h.comment ?? null,
         createdAt: h.createdAt,
       })),

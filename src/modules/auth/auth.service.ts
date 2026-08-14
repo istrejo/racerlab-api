@@ -79,14 +79,13 @@ export class AuthService {
           },
         });
 
-        return this.issueAuthenticatedSession(
+        return this.issueAuthenticatedSession({
           user,
-          undefined,
           context,
-          null,
-          false,
-          tx,
-        );
+          knownMembership: null,
+          knownMustChangePassword: false,
+          prisma: tx,
+        });
       });
     } catch (error) {
       if (
@@ -125,13 +124,12 @@ export class AuthService {
       const activeMembership =
         user.memberships.length === 1 ? user.memberships[0] : null;
 
-      return this.issueAuthenticatedSession(
+      return this.issueAuthenticatedSession({
         user,
-        activeMembership?.id,
         context,
-        activeMembership,
-        user.mustChangePassword,
-      );
+        knownMembership: activeMembership,
+        knownMustChangePassword: user.mustChangePassword,
+      });
     } catch (error) {
       this.rethrowAuthError(error, 'login');
     }
@@ -272,6 +270,14 @@ export class AuthService {
     }
   }
 
+  /**
+   * Re-issues the session access token after a membership change.
+   *
+   * This is the designated public entry point for modules that operate on
+   * workshops and need to embed updated membership claims into the caller's
+   * access token without triggering a full re-authentication cycle.
+   * Called by WorkshopsService after create() and transferOwnership().
+   */
   async activateMembershipForSession(
     user: Pick<AuthenticatedUser, 'id' | 'sessionId' | 'mustChangePassword'>,
     membership: ActiveMembershipContext,
@@ -312,22 +318,29 @@ export class AuthService {
     }
   }
 
-  async issueAuthenticatedSession(
+  private async issueAuthenticatedSession(options: {
     user: {
       id: string;
       name: string;
       email: string;
       mustChangePassword: boolean;
-    },
-    activeMembershipId?: string,
-    context: AuthRequestContext = {},
-    knownMembership?: ActiveMembershipContext | null,
-    knownMustChangePassword?: boolean,
-    prisma?: Prisma.TransactionClient,
-  ): Promise<AuthSessionResponse> {
+    };
+    context?: AuthRequestContext;
+    knownMembership?: ActiveMembershipContext | null;
+    knownMustChangePassword?: boolean;
+    prisma?: Prisma.TransactionClient;
+  }): Promise<AuthSessionResponse> {
+    const {
+      user,
+      context = {},
+      knownMembership,
+      knownMustChangePassword,
+      prisma,
+    } = options;
+
     const membership =
       knownMembership === undefined
-        ? await this.findActiveMembership(user.id, activeMembershipId)
+        ? await this.findActiveMembership(user.id, undefined)
         : knownMembership;
     const mustChangePassword =
       knownMustChangePassword ??

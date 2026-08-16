@@ -68,7 +68,11 @@ describe('VehiclesService', () => {
         mileage: 45000,
         vehicleType: 'Sedán',
       }),
-    ).resolves.toMatchObject({ id: vehicle.id, plate: 'ABC1234', brand: 'Toyota' });
+    ).resolves.toMatchObject({
+      id: vehicle.id,
+      plate: 'ABC1234',
+      brand: 'Toyota',
+    });
 
     expect(prisma.vehicle.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -139,7 +143,11 @@ describe('VehiclesService', () => {
     prisma.vehicle.findMany.mockResolvedValue([vehicle]);
     prisma.vehicle.count.mockResolvedValue(1);
 
-    await service.list(context, customerId, { search: 'Toyota', page: 1, limit: 20 });
+    await service.list(context, customerId, {
+      search: 'Toyota',
+      page: 1,
+      limit: 20,
+    });
 
     expect(prisma.vehicle.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -166,6 +174,74 @@ describe('VehiclesService', () => {
       limit: 20,
       total: 0,
       totalPages: 0,
+    });
+  });
+
+  describe('listForWorkshop', () => {
+    const vehicleWithCustomer = {
+      ...vehicle,
+      customer: { id: customerId, fullName: 'María García' },
+    };
+
+    beforeEach(() => {
+      prisma.vehicle.findMany.mockResolvedValue([vehicleWithCustomer]);
+      prisma.vehicle.count.mockResolvedValue(1);
+    });
+
+    it('lists every workshop vehicle with its customer summary', async () => {
+      const result = await service.listForWorkshop(context, {
+        page: 1,
+        limit: 20,
+      });
+
+      expect(result).toMatchObject({
+        page: 1,
+        limit: 20,
+        total: 1,
+        totalPages: 1,
+      });
+      expect(result.items[0]).toMatchObject({
+        id: vehicle.id,
+        plate: 'ABC1234',
+        serviceOrderCount: 0,
+        customer: { id: customerId, fullName: 'María García' },
+      });
+      expect(prisma.vehicle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { workshopId: context.workshopId } }),
+      );
+    });
+
+    it('searches across plate, brand, model, and customer name', async () => {
+      await service.listForWorkshop(context, {
+        search: 'garcia',
+        page: 1,
+        limit: 20,
+      });
+
+      const where = prisma.vehicle.findMany.mock.calls[0][0].where;
+      expect(where.OR).toEqual([
+        { plate: { contains: 'garcia', mode: 'insensitive' } },
+        { brand: { contains: 'garcia', mode: 'insensitive' } },
+        { model: { contains: 'garcia', mode: 'insensitive' } },
+        { customer: { fullName: { contains: 'garcia', mode: 'insensitive' } } },
+      ]);
+    });
+
+    it('skips rows for pages beyond the first', async () => {
+      await service.listForWorkshop(context, { page: 2, limit: 15 });
+
+      expect(prisma.vehicle.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 15, take: 15 }),
+      );
+    });
+
+    it('reports zero pages when the workshop has no vehicles', async () => {
+      prisma.vehicle.findMany.mockResolvedValue([]);
+      prisma.vehicle.count.mockResolvedValue(0);
+
+      await expect(
+        service.listForWorkshop(context, { page: 1, limit: 20 }),
+      ).resolves.toMatchObject({ items: [], total: 0, totalPages: 0 });
     });
   });
 

@@ -12,13 +12,23 @@ import { ListVehiclesQueryDto } from './dto/list-vehicles-query.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import { VehiclePageResponseDto } from './dto/vehicle-page-response.dto';
 import { VehicleResponseDto } from './dto/vehicle-response.dto';
+import { VehicleWithCustomerPageResponseDto } from './dto/vehicle-with-customer-page-response.dto';
+import { VehicleWithCustomerResponseDto } from './dto/vehicle-with-customer-response.dto';
 
 const VEHICLE_COUNTS = {
   select: { serviceOrders: true },
 } as const;
 
+const VEHICLE_CUSTOMER = {
+  select: { id: true, fullName: true },
+} as const;
+
 type VehicleWithCounts = Prisma.VehicleGetPayload<{
   include: { _count: typeof VEHICLE_COUNTS };
+}>;
+
+type VehicleWithCustomer = Prisma.VehicleGetPayload<{
+  include: { _count: typeof VEHICLE_COUNTS; customer: typeof VEHICLE_CUSTOMER };
 }>;
 
 @Injectable()
@@ -99,6 +109,52 @@ export class VehiclesService {
 
     return {
       items: vehicles.map((vehicle) => this.toResponse(vehicle)),
+      page,
+      limit,
+      total,
+      totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+    };
+  }
+
+  async listForWorkshop(
+    context: WorkshopContext,
+    query: ListVehiclesQueryDto,
+  ): Promise<VehicleWithCustomerPageResponseDto> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const search = query.search?.trim();
+
+    const where: Prisma.VehicleWhereInput = {
+      workshopId: context.workshopId,
+      ...(search
+        ? {
+            OR: [
+              { plate: { contains: search, mode: 'insensitive' } },
+              { brand: { contains: search, mode: 'insensitive' } },
+              { model: { contains: search, mode: 'insensitive' } },
+              {
+                customer: {
+                  fullName: { contains: search, mode: 'insensitive' },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const [vehicles, total] = await this.prisma.$transaction([
+      this.prisma.vehicle.findMany({
+        where,
+        include: { _count: VEHICLE_COUNTS, customer: VEHICLE_CUSTOMER },
+        orderBy: [{ plate: 'asc' }, { id: 'asc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.vehicle.count({ where }),
+    ]);
+
+    return {
+      items: vehicles.map((vehicle) => this.toCustomerResponse(vehicle)),
       page,
       limit,
       total,
@@ -270,6 +326,18 @@ export class VehiclesService {
       serviceOrderCount: vehicle._count.serviceOrders,
       createdAt: vehicle.createdAt,
       updatedAt: vehicle.updatedAt,
+    };
+  }
+
+  private toCustomerResponse(
+    vehicle: VehicleWithCustomer,
+  ): VehicleWithCustomerResponseDto {
+    return {
+      ...this.toResponse(vehicle),
+      customer: {
+        id: vehicle.customer.id,
+        fullName: vehicle.customer.fullName,
+      },
     };
   }
 

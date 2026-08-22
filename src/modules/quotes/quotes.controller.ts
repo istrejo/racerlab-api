@@ -20,8 +20,11 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
 import type { WorkshopContext } from '../../common/auth/workshop-context';
+import {
+  WORKSHOP_RESOURCE_READ_ROLES,
+  WORKSHOP_RESOURCE_WRITE_ROLES,
+} from '../../common/auth/workshop-role-policy';
 import { CurrentWorkshop } from '../../common/decorators/current-workshop.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -32,15 +35,6 @@ import { CreateQuoteDto } from './dto/create-quote.dto';
 import { QuoteResponseDto } from './dto/quote-response.dto';
 import { UpdateQuoteDto } from './dto/update-quote.dto';
 import { QuotesService } from './quotes.service';
-
-const QUOTE_READ_ROLES = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ADVISOR,
-  UserRole.TECHNICIAN,
-] as const;
-
-const QUOTE_WRITE_ROLES = [UserRole.ADMIN, UserRole.MANAGER, UserRole.ADVISOR] as const;
 
 @ApiTags('quotes')
 @ApiBearerAuth('bearer')
@@ -55,7 +49,7 @@ export class QuotesController {
   constructor(private readonly quotesService: QuotesService) {}
 
   @Get()
-  @Roles(...QUOTE_READ_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'List quotes for a service order' })
   @ApiOkResponse({ type: [QuoteResponseDto] })
   @ApiNotFoundResponse({ description: 'Service order not found.' })
@@ -67,7 +61,7 @@ export class QuotesController {
   }
 
   @Get(':id')
-  @Roles(...QUOTE_READ_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'Get a single quote' })
   @ApiOkResponse({ type: QuoteResponseDto })
   @ApiNotFoundResponse({ description: 'Quote not found.' })
@@ -80,7 +74,7 @@ export class QuotesController {
   }
 
   @Post()
-  @Roles(...QUOTE_WRITE_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
   @ApiOperation({ summary: 'Create a draft quote for a service order' })
   @ApiCreatedResponse({ type: QuoteResponseDto })
   @ApiNotFoundResponse({ description: 'Service order not found.' })
@@ -93,7 +87,7 @@ export class QuotesController {
   }
 
   @Patch(':id')
-  @Roles(...QUOTE_WRITE_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
   @ApiOperation({ summary: 'Update a draft quote (items, discount, tax)' })
   @ApiOkResponse({ type: QuoteResponseDto })
   @ApiNotFoundResponse({ description: 'Quote not found.' })
@@ -108,13 +102,14 @@ export class QuotesController {
   }
 
   @Patch(':id/status')
-  @Roles(...QUOTE_WRITE_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
   @ApiOperation({ summary: 'Transition a quote to a new status' })
   @ApiOkResponse({ type: QuoteResponseDto })
   @ApiNotFoundResponse({ description: 'Quote not found.' })
   @ApiBadRequestResponse({ description: 'Status transition not allowed.' })
   @ApiConflictResponse({
-    description: 'Another quote is already active or approved for this service order.',
+    description:
+      'Another quote is already active or approved for this service order.',
   })
   changeStatus(
     @CurrentWorkshop() context: WorkshopContext,

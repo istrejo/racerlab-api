@@ -88,12 +88,21 @@ describe('Customers API (e2e)', () => {
 
   it('serves the paginated list with transformed query values', async () => {
     await request(app.getHttpServer())
-      .get('/api/customers?search=%20Ana%20&page=2&limit=10')
+      .get(
+        '/api/customers?search=%20Ana%20&hasVehicles=false&hasServiceOrders=true&sort=NEWEST&page=2&limit=10',
+      )
       .expect(200);
 
     expect(customersService.list).toHaveBeenCalledWith(
       { workshopId, membershipId, role: UserRole.ADMIN },
-      { search: 'Ana', page: 2, limit: 10 },
+      {
+        search: 'Ana',
+        hasVehicles: false,
+        hasServiceOrders: true,
+        sort: 'NEWEST',
+        page: 2,
+        limit: 10,
+      },
     );
   });
 
@@ -124,6 +133,9 @@ describe('Customers API (e2e)', () => {
       .get('/api/customers?page=0&limit=101')
       .expect(400);
     await request(app.getHttpServer())
+      .get('/api/customers?hasVehicles=maybe&sort=INVALID')
+      .expect(400);
+    await request(app.getHttpServer())
       .post('/api/customers')
       .send({ fullName: 'Ana', secret: 'not-allowed' })
       .expect(400);
@@ -136,6 +148,22 @@ describe('Customers API (e2e)', () => {
       .post('/api/customers')
       .send({ fullName: 'Ana' })
       .expect(403);
+  });
+
+  it('allows owners to use every customer CRUD route', async () => {
+    currentRole = UserRole.OWNER;
+    await request(app.getHttpServer()).get('/api/customers').expect(200);
+    await request(app.getHttpServer())
+      .post('/api/customers')
+      .send({ fullName: 'Owner Customer' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .patch(`/api/customers/${customerId}`)
+      .send({ notes: 'Owner update' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .delete(`/api/customers/${customerId}`)
+      .expect(204);
   });
 
   it('denies inventory roles and restricts deletion to owner or admin', async () => {

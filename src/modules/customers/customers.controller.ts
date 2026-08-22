@@ -24,8 +24,12 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
 import type { WorkshopContext } from '../../common/auth/workshop-context';
+import {
+  WORKSHOP_RESOURCE_DELETE_ROLES,
+  WORKSHOP_RESOURCE_READ_ROLES,
+  WORKSHOP_RESOURCE_WRITE_ROLES,
+} from '../../common/auth/workshop-role-policy';
 import { CurrentWorkshop } from '../../common/decorators/current-workshop.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -37,19 +41,6 @@ import { CustomerPageResponseDto } from './dto/customer-page-response.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { ListCustomersQueryDto } from './dto/list-customers-query.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
-
-const CUSTOMER_READ_ROLES = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ADVISOR,
-  UserRole.TECHNICIAN,
-] as const;
-
-const CUSTOMER_WRITE_ROLES = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ADVISOR,
-] as const;
 
 @ApiTags('customers')
 @ApiBearerAuth('bearer')
@@ -64,7 +55,7 @@ export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
 
   @Get()
-  @Roles(...CUSTOMER_READ_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'Search customers in the active workshop' })
   @ApiOkResponse({ type: CustomerPageResponseDto })
   list(
@@ -75,7 +66,7 @@ export class CustomersController {
   }
 
   @Get(':id')
-  @Roles(...CUSTOMER_READ_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'Get a customer from the active workshop' })
   @ApiOkResponse({ type: CustomerResponseDto })
   @ApiNotFoundResponse({ description: 'Customer not found.' })
@@ -87,7 +78,7 @@ export class CustomersController {
   }
 
   @Post()
-  @Roles(...CUSTOMER_WRITE_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
   @ApiOperation({ summary: 'Create a customer in the active workshop' })
   @ApiCreatedResponse({ type: CustomerResponseDto })
   @ApiConflictResponse({
@@ -101,7 +92,7 @@ export class CustomersController {
   }
 
   @Patch(':id')
-  @Roles(...CUSTOMER_WRITE_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
   @ApiOperation({ summary: 'Update a customer in the active workshop' })
   @ApiOkResponse({ type: CustomerResponseDto })
   @ApiNotFoundResponse({ description: 'Customer not found.' })
@@ -118,7 +109,7 @@ export class CustomersController {
 
   @Delete(':id')
   @HttpCode(204)
-  @Roles(UserRole.ADMIN)
+  @Roles(...WORKSHOP_RESOURCE_DELETE_ROLES)
   @ApiOperation({ summary: 'Delete an unreferenced customer' })
   @ApiNoContentResponse({ description: 'Customer deleted.' })
   @ApiNotFoundResponse({ description: 'Customer not found.' })

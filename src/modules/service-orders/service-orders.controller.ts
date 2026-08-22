@@ -20,8 +20,11 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
 import type { WorkshopContext } from '../../common/auth/workshop-context';
+import {
+  WORKSHOP_RESOURCE_READ_ROLES,
+  WORKSHOP_RESOURCE_WRITE_ROLES,
+} from '../../common/auth/workshop-role-policy';
 import { CurrentWorkshop } from '../../common/decorators/current-workshop.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -36,22 +39,6 @@ import { ServiceOrderPageResponseDto } from './dto/service-order-page-response.d
 import { UpdateServiceOrderDto } from './dto/update-service-order.dto';
 import { ServiceOrdersService } from './service-orders.service';
 
-const ORDER_READ_ROLES = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ADVISOR,
-  UserRole.TECHNICIAN,
-] as const;
-
-const ORDER_WRITE_ROLES = [UserRole.ADMIN, UserRole.MANAGER, UserRole.ADVISOR] as const;
-
-const ORDER_STATUS_ROLES = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ADVISOR,
-  UserRole.TECHNICIAN,
-] as const;
-
 @ApiTags('service-orders')
 @ApiBearerAuth('bearer')
 @ApiBadRequestResponse({ description: 'Request validation failed.' })
@@ -65,7 +52,7 @@ export class ServiceOrdersController {
   constructor(private readonly serviceOrdersService: ServiceOrdersService) {}
 
   @Get()
-  @Roles(...ORDER_READ_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'List service orders in the active workshop' })
   @ApiOkResponse({ type: ServiceOrderPageResponseDto })
   list(
@@ -76,7 +63,7 @@ export class ServiceOrdersController {
   }
 
   @Get(':id')
-  @Roles(...ORDER_READ_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'Get a service order from the active workshop' })
   @ApiOkResponse({ type: ServiceOrderDetailResponseDto })
   @ApiNotFoundResponse({ description: 'Service order not found.' })
@@ -88,7 +75,7 @@ export class ServiceOrdersController {
   }
 
   @Post()
-  @Roles(...ORDER_WRITE_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
   @ApiOperation({ summary: 'Create a service order in the active workshop' })
   @ApiCreatedResponse({ type: ServiceOrderDetailResponseDto })
   @ApiNotFoundResponse({ description: 'Customer or vehicle not found.' })
@@ -100,7 +87,7 @@ export class ServiceOrdersController {
   }
 
   @Patch(':id')
-  @Roles(...ORDER_WRITE_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
   @ApiOperation({ summary: 'Update editable fields of a service order' })
   @ApiOkResponse({ type: ServiceOrderDetailResponseDto })
   @ApiNotFoundResponse({ description: 'Service order not found.' })
@@ -113,7 +100,7 @@ export class ServiceOrdersController {
   }
 
   @Patch(':id/status')
-  @Roles(...ORDER_STATUS_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'Transition service order to a new status' })
   @ApiOkResponse({ type: ServiceOrderDetailResponseDto })
   @ApiNotFoundResponse({ description: 'Service order not found.' })
@@ -127,10 +114,14 @@ export class ServiceOrdersController {
   }
 
   @Patch(':id/technician')
-  @Roles(...ORDER_WRITE_ROLES)
-  @ApiOperation({ summary: 'Assign or unassign a technician to a service order' })
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
+  @ApiOperation({
+    summary: 'Assign or unassign a technician to a service order',
+  })
   @ApiOkResponse({ type: ServiceOrderDetailResponseDto })
-  @ApiNotFoundResponse({ description: 'Service order or technician not found.' })
+  @ApiNotFoundResponse({
+    description: 'Service order or technician not found.',
+  })
   assignTechnician(
     @CurrentWorkshop() context: WorkshopContext,
     @Param('id', ParseUUIDPipe) id: string,

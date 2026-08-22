@@ -10,7 +10,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerPageResponseDto } from './dto/customer-page-response.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
-import { ListCustomersQueryDto } from './dto/list-customers-query.dto';
+import {
+  CustomerSort,
+  ListCustomersQueryDto,
+} from './dto/list-customers-query.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 
 const CUSTOMER_COUNTS = {
@@ -64,6 +67,16 @@ export class CustomersService {
     const search = query.search?.trim();
     const where: Prisma.CustomerWhereInput = {
       workshopId: context.workshopId,
+      ...(query.hasVehicles === undefined
+        ? {}
+        : {
+            vehicles: query.hasVehicles ? { some: {} } : { none: {} },
+          }),
+      ...(query.hasServiceOrders === undefined
+        ? {}
+        : {
+            serviceOrders: query.hasServiceOrders ? { some: {} } : { none: {} },
+          }),
       ...(search
         ? {
             OR: [
@@ -86,7 +99,7 @@ export class CustomersService {
       this.prisma.customer.findMany({
         where,
         include: { _count: CUSTOMER_COUNTS },
-        orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
+        orderBy: this.customerOrderBy(query.sort),
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -203,6 +216,22 @@ export class CustomersService {
       where: { id: customerId, workshopId: context.workshopId },
       include: { _count: CUSTOMER_COUNTS },
     });
+  }
+
+  private customerOrderBy(
+    sort: CustomerSort | undefined,
+  ): Prisma.CustomerOrderByWithRelationInput[] {
+    switch (sort) {
+      case CustomerSort.NAME_DESC:
+        return [{ fullName: 'desc' }, { id: 'asc' }];
+      case CustomerSort.NEWEST:
+        return [{ createdAt: 'desc' }, { id: 'asc' }];
+      case CustomerSort.OLDEST:
+        return [{ createdAt: 'asc' }, { id: 'asc' }];
+      case CustomerSort.NAME_ASC:
+      default:
+        return [{ fullName: 'asc' }, { id: 'asc' }];
+    }
   }
 
   private normalizeNullable(value: string | null | undefined): string | null {

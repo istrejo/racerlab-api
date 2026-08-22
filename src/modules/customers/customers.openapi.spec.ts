@@ -115,10 +115,17 @@ describe('Customers OpenAPI contract', () => {
     }
   });
 
-  it('documents search, page, and bounded limit query parameters', () => {
+  it('documents search, operational filters, sorting, and pagination', () => {
     const parameters = document.paths['/customers']?.get?.parameters ?? [];
     expect(
       parameters.map((parameter) => 'name' in parameter && parameter.name),
-    ).toEqual(['search', 'page', 'limit']);
+    ).toEqual([
+      'search',
+      'hasVehicles',
+      'hasServiceOrders',
+      'sort',
+      'page',
+      'limit',
+    ]);
   });
 });

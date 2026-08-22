@@ -22,8 +22,11 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
 import type { WorkshopContext } from '../../common/auth/workshop-context';
+import {
+  WORKSHOP_RESOURCE_READ_ROLES,
+  WORKSHOP_RESOURCE_WRITE_ROLES,
+} from '../../common/auth/workshop-role-policy';
 import { CurrentWorkshop } from '../../common/decorators/current-workshop.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -33,26 +36,6 @@ import { DiagnosesService } from './diagnoses.service';
 import { CreateDiagnosisDto } from './dto/create-diagnosis.dto';
 import { DiagnosisResponseDto } from './dto/diagnosis-response.dto';
 import { UpdateDiagnosisDto } from './dto/update-diagnosis.dto';
-
-const DIAGNOSIS_READ_ROLES = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ADVISOR,
-  UserRole.TECHNICIAN,
-] as const;
-
-const DIAGNOSIS_WRITE_ROLES = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ADVISOR,
-  UserRole.TECHNICIAN,
-] as const;
-
-const DIAGNOSIS_DELETE_ROLES = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ADVISOR,
-] as const;
 
 @ApiTags('diagnoses')
 @ApiBearerAuth('bearer')
@@ -67,7 +50,7 @@ export class DiagnosesController {
   constructor(private readonly diagnosesService: DiagnosesService) {}
 
   @Get()
-  @Roles(...DIAGNOSIS_READ_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'List diagnoses for a service order' })
   @ApiOkResponse({ type: [DiagnosisResponseDto] })
   @ApiNotFoundResponse({ description: 'Service order not found.' })
@@ -79,7 +62,7 @@ export class DiagnosesController {
   }
 
   @Get(':id')
-  @Roles(...DIAGNOSIS_READ_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'Get a single diagnosis' })
   @ApiOkResponse({ type: DiagnosisResponseDto })
   @ApiNotFoundResponse({ description: 'Diagnosis not found.' })
@@ -92,7 +75,7 @@ export class DiagnosesController {
   }
 
   @Post()
-  @Roles(...DIAGNOSIS_WRITE_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'Add a diagnosis to a service order' })
   @ApiCreatedResponse({ type: DiagnosisResponseDto })
   @ApiNotFoundResponse({ description: 'Service order not found.' })
@@ -105,7 +88,7 @@ export class DiagnosesController {
   }
 
   @Patch(':id')
-  @Roles(...DIAGNOSIS_WRITE_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'Update a diagnosis' })
   @ApiOkResponse({ type: DiagnosisResponseDto })
   @ApiNotFoundResponse({ description: 'Diagnosis not found.' })
@@ -120,7 +103,7 @@ export class DiagnosesController {
 
   @Delete(':id')
   @HttpCode(204)
-  @Roles(...DIAGNOSIS_DELETE_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
   @ApiOperation({ summary: 'Delete a diagnosis' })
   @ApiNoContentResponse({ description: 'Diagnosis deleted.' })
   @ApiNotFoundResponse({ description: 'Diagnosis not found.' })

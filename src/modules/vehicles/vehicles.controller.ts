@@ -24,8 +24,12 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
 import type { WorkshopContext } from '../../common/auth/workshop-context';
+import {
+  WORKSHOP_RESOURCE_DELETE_ROLES,
+  WORKSHOP_RESOURCE_READ_ROLES,
+  WORKSHOP_RESOURCE_WRITE_ROLES,
+} from '../../common/auth/workshop-role-policy';
 import { CurrentWorkshop } from '../../common/decorators/current-workshop.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -37,19 +41,6 @@ import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import { VehiclePageResponseDto } from './dto/vehicle-page-response.dto';
 import { VehicleResponseDto } from './dto/vehicle-response.dto';
 import { VehiclesService } from './vehicles.service';
-
-const VEHICLE_READ_ROLES = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ADVISOR,
-  UserRole.TECHNICIAN,
-] as const;
-
-const VEHICLE_WRITE_ROLES = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ADVISOR,
-] as const;
 
 @ApiTags('vehicles')
 @ApiBearerAuth('bearer')
@@ -64,8 +55,10 @@ export class VehiclesController {
   constructor(private readonly vehiclesService: VehiclesService) {}
 
   @Get()
-  @Roles(...VEHICLE_READ_ROLES)
-  @ApiOperation({ summary: 'List vehicles for a customer in the active workshop' })
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
+  @ApiOperation({
+    summary: 'List vehicles for a customer in the active workshop',
+  })
   @ApiOkResponse({ type: VehiclePageResponseDto })
   @ApiNotFoundResponse({ description: 'Customer not found.' })
   list(
@@ -77,7 +70,7 @@ export class VehiclesController {
   }
 
   @Get(':id')
-  @Roles(...VEHICLE_READ_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'Get a vehicle from the active workshop' })
   @ApiOkResponse({ type: VehicleResponseDto })
   @ApiNotFoundResponse({ description: 'Vehicle not found.' })
@@ -90,8 +83,10 @@ export class VehiclesController {
   }
 
   @Post()
-  @Roles(...VEHICLE_WRITE_ROLES)
-  @ApiOperation({ summary: 'Create a vehicle for a customer in the active workshop' })
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
+  @ApiOperation({
+    summary: 'Create a vehicle for a customer in the active workshop',
+  })
   @ApiCreatedResponse({ type: VehicleResponseDto })
   @ApiNotFoundResponse({ description: 'Customer not found.' })
   @ApiConflictResponse({
@@ -106,7 +101,7 @@ export class VehiclesController {
   }
 
   @Patch(':id')
-  @Roles(...VEHICLE_WRITE_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
   @ApiOperation({ summary: 'Update a vehicle in the active workshop' })
   @ApiOkResponse({ type: VehicleResponseDto })
   @ApiNotFoundResponse({ description: 'Vehicle not found.' })
@@ -124,7 +119,7 @@ export class VehiclesController {
 
   @Delete(':id')
   @HttpCode(204)
-  @Roles(UserRole.ADMIN)
+  @Roles(...WORKSHOP_RESOURCE_DELETE_ROLES)
   @ApiOperation({ summary: 'Delete an unreferenced vehicle' })
   @ApiNoContentResponse({ description: 'Vehicle deleted.' })
   @ApiNotFoundResponse({ description: 'Vehicle not found.' })

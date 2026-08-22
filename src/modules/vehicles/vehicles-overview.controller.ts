@@ -8,8 +8,8 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
 import type { WorkshopContext } from '../../common/auth/workshop-context';
+import { WORKSHOP_RESOURCE_READ_ROLES } from '../../common/auth/workshop-role-policy';
 import { CurrentWorkshop } from '../../common/decorators/current-workshop.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -18,13 +18,6 @@ import { WorkshopContextGuard } from '../../common/guards/workshop-context.guard
 import { ListVehiclesQueryDto } from './dto/list-vehicles-query.dto';
 import { VehicleWithCustomerPageResponseDto } from './dto/vehicle-with-customer-page-response.dto';
 import { VehiclesService } from './vehicles.service';
-
-const VEHICLE_READ_ROLES = [
-  UserRole.ADMIN,
-  UserRole.MANAGER,
-  UserRole.ADVISOR,
-  UserRole.TECHNICIAN,
-] as const;
 
 @ApiTags('vehicles')
 @ApiBearerAuth('bearer')
@@ -39,7 +32,7 @@ export class VehiclesOverviewController {
   constructor(private readonly vehiclesService: VehiclesService) {}
 
   @Get()
-  @Roles(...VEHICLE_READ_ROLES)
+  @Roles(...WORKSHOP_RESOURCE_READ_ROLES)
   @ApiOperation({ summary: 'List vehicles across the active workshop' })
   @ApiOkResponse({ type: VehicleWithCustomerPageResponseDto })
   list(

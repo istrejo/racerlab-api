@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -9,6 +11,19 @@ import {
   Min,
 } from 'class-validator';
 import { trimString } from './customer-input.transforms';
+
+export enum CustomerSort {
+  NAME_ASC = 'NAME_ASC',
+  NAME_DESC = 'NAME_DESC',
+  NEWEST = 'NEWEST',
+  OLDEST = 'OLDEST',
+}
+
+function optionalBoolean({ value }: { value: unknown }): unknown {
+  if (value === 'true' || value === true) return true;
+  if (value === 'false' || value === false) return false;
+  return value;
+}
 
 export class ListCustomersQueryDto {
   @ApiPropertyOptional({
@@ -21,6 +36,29 @@ export class ListCustomersQueryDto {
   @IsString()
   @MaxLength(100)
   search?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter customers by whether they have registered vehicles.',
+    type: Boolean,
+  })
+  @Transform(optionalBoolean)
+  @IsOptional()
+  @IsBoolean()
+  hasVehicles?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Filter customers by whether they have service orders.',
+    type: Boolean,
+  })
+  @Transform(optionalBoolean)
+  @IsOptional()
+  @IsBoolean()
+  hasServiceOrders?: boolean;
+
+  @ApiPropertyOptional({ enum: CustomerSort, default: CustomerSort.NAME_ASC })
+  @IsOptional()
+  @IsEnum(CustomerSort)
+  sort?: CustomerSort;
 
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   @Type(() => Number)

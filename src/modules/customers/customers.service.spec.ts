@@ -1,6 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { CustomersService } from './customers.service';
+import { CustomerSort } from './dto/list-customers-query.dto';
 
 describe('CustomersService', () => {
   const context = {
@@ -138,6 +139,28 @@ describe('CustomersService', () => {
       total: 0,
       totalPages: 0,
     });
+  });
+
+  it('combines relationship filters with newest-first sorting', async () => {
+    prisma.customer.findMany.mockResolvedValue([customer]);
+    prisma.customer.count.mockResolvedValue(1);
+
+    await service.list(context, {
+      hasVehicles: false,
+      hasServiceOrders: true,
+      sort: CustomerSort.NEWEST,
+    });
+
+    expect(prisma.customer.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          workshopId: context.workshopId,
+          vehicles: { none: {} },
+          serviceOrders: { some: {} },
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      }),
+    );
   });
 
   it('never exposes a customer from another workshop', async () => {

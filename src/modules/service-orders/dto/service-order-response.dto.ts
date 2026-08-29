@@ -1,7 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { FuelLevel, ServiceOrderPriority, ServiceOrderStatus } from '@prisma/client';
+import {
+  FuelLevel,
+  ServiceOrderPriority,
+  ServiceOrderStatus,
+} from '@prisma/client';
 import { CustomerSummaryDto } from './customer-summary.dto';
-import { MemberSummaryDto } from './member-summary.dto';
+import { TechnicianSummaryDto } from './technician-summary.dto';
 import { VehicleSummaryDto } from './vehicle-summary.dto';
 
 export class ServiceOrderResponseDto {
@@ -26,11 +30,16 @@ export class ServiceOrderResponseDto {
   @ApiProperty({ type: VehicleSummaryDto })
   vehicle!: VehicleSummaryDto;
 
-  @ApiProperty({ nullable: true, type: String, format: 'uuid' })
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: 'Assigned technician user UUID retained for compatibility.',
+  })
   assignedTechnicianId!: string | null;
 
-  @ApiProperty({ nullable: true, type: MemberSummaryDto })
-  assignedTechnician!: MemberSummaryDto | null;
+  @ApiProperty({ nullable: true, type: TechnicianSummaryDto })
+  assignedTechnician!: TechnicianSummaryDto | null;
 
   @ApiProperty({ enum: ServiceOrderStatus })
   status!: ServiceOrderStatus;

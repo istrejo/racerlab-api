@@ -15,6 +15,7 @@ import { ListServiceOrdersQueryDto } from './dto/list-service-orders-query.dto';
 import { ServiceOrderDetailResponseDto } from './dto/service-order-detail-response.dto';
 import { ServiceOrderPageResponseDto } from './dto/service-order-page-response.dto';
 import { ServiceOrderResponseDto } from './dto/service-order-response.dto';
+import { TechnicianSummaryDto } from './dto/technician-summary.dto';
 import { UpdateServiceOrderDto } from './dto/update-service-order.dto';
 
 const ALLOWED_TRANSITIONS: Record<ServiceOrderStatus, ServiceOrderStatus[]> = {
@@ -50,14 +51,14 @@ const ALLOWED_TRANSITIONS: Record<ServiceOrderStatus, ServiceOrderStatus[]> = {
 const ORDER_INCLUDE = {
   customer: { select: { id: true, fullName: true } },
   vehicle: { select: { id: true, plate: true, brand: true, model: true } },
-  assignedTechnician: { select: { userId: true, displayName: true } },
+  assignedTechnician: { select: { id: true, userId: true, displayName: true } },
   _count: { select: { diagnoses: true } },
 } as const;
 
 const ORDER_DETAIL_INCLUDE = {
   customer: { select: { id: true, fullName: true } },
   vehicle: { select: { id: true, plate: true, brand: true, model: true } },
-  assignedTechnician: { select: { userId: true, displayName: true } },
+  assignedTechnician: { select: { id: true, userId: true, displayName: true } },
   createdBy: { select: { userId: true, displayName: true } },
   _count: { select: { diagnoses: true } },
   statusHistory: {
@@ -192,6 +193,27 @@ export class ServiceOrdersService {
     };
   }
 
+  async listAssignableTechnicians(
+    context: WorkshopContext,
+  ): Promise<TechnicianSummaryDto[]> {
+    const memberships = await this.prisma.membership.findMany({
+      where: {
+        workshopId: context.workshopId,
+        isActive: true,
+        role: { name: UserRole.TECHNICIAN },
+        user: { isActive: true },
+      },
+      select: { id: true, userId: true, displayName: true },
+      orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
+    });
+
+    return memberships.map((membership) => ({
+      membershipId: membership.id,
+      userId: membership.userId,
+      displayName: membership.displayName,
+    }));
+  }
+
   async findOne(
     context: WorkshopContext,
     serviceOrderId: string,
@@ -223,13 +245,7 @@ export class ServiceOrdersService {
         throw new NotFoundException('Service order not found.');
       }
 
-      if (
-        existing.status === ServiceOrderStatus.DELIVERED &&
-        context.role !== UserRole.ADMIN &&
-        context.role !== UserRole.OWNER
-      ) {
-        throw new ForbiddenException('Delivered orders cannot be modified.');
-      }
+      this.assertCanModifyDeliveredOrder(context, existing.status);
 
       return tx.serviceOrder.update({
         where: { id: existing.id },
@@ -338,6 +354,8 @@ export class ServiceOrdersService {
         throw new NotFoundException('Service order not found.');
       }
 
+      this.assertCanModifyDeliveredOrder(context, existing.status);
+
       let assignedTechnicianId: string | null = null;
       if (dto.technicianId) {
         assignedTechnicianId = await this.resolveTechnicianUserId(
@@ -413,6 +431,8 @@ export class ServiceOrdersService {
         id: technicianId,
         workshopId: context.workshopId,
         isActive: true,
+        role: { name: UserRole.TECHNICIAN },
+        user: { isActive: true },
       },
       select: { userId: true },
     });
@@ -420,6 +440,19 @@ export class ServiceOrdersService {
       throw new NotFoundException('Technician not found.');
     }
     return membership.userId;
+  }
+
+  private assertCanModifyDeliveredOrder(
+    context: WorkshopContext,
+    status: ServiceOrderStatus,
+  ): void {
+    if (
+      status === ServiceOrderStatus.DELIVERED &&
+      context.role !== UserRole.ADMIN &&
+      context.role !== UserRole.OWNER
+    ) {
+      throw new ForbiddenException('Delivered orders cannot be modified.');
+    }
   }
 
   private async generateCode(
@@ -453,6 +486,7 @@ export class ServiceOrdersService {
       assignedTechnicianId: order.assignedTechnicianId,
       assignedTechnician: order.assignedTechnician
         ? {
+            membershipId: order.assignedTechnician.id,
             userId: order.assignedTechnician.userId,
             displayName: order.assignedTechnician.displayName,
           }

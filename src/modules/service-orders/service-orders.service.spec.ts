@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ServiceOrderStatus, UserRole } from '@prisma/client';
 import { ServiceOrdersService } from './service-orders.service';
 
@@ -38,7 +42,12 @@ describe('ServiceOrdersService', () => {
     createdAt: now,
     updatedAt: now,
     customer: { id: customerId, fullName: 'María García' },
-    vehicle: { id: vehicleId, plate: 'ABC1234', brand: 'Toyota', model: 'Corolla' },
+    vehicle: {
+      id: vehicleId,
+      plate: 'ABC1234',
+      brand: 'Toyota',
+      model: 'Corolla',
+    },
     assignedTechnician: null,
     createdBy: { userId: membershipUserId, displayName: 'Juan Pérez' },
     statusHistory: [
@@ -55,7 +64,7 @@ describe('ServiceOrdersService', () => {
   };
 
   const prisma = {
-    membership: { findFirst: jest.fn() },
+    membership: { findFirst: jest.fn(), findMany: jest.fn() },
     customer: { findFirst: jest.fn() },
     vehicle: { findFirst: jest.fn() },
     serviceOrder: {
@@ -91,7 +100,10 @@ describe('ServiceOrdersService', () => {
       reportedIssues: 'Ruido al frenar',
     });
 
-    expect(result).toMatchObject({ code: 'SO-0001', status: ServiceOrderStatus.RECEIVED });
+    expect(result).toMatchObject({
+      code: 'SO-0001',
+      status: ServiceOrderStatus.RECEIVED,
+    });
     expect(prisma.serviceOrder.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -118,34 +130,43 @@ describe('ServiceOrdersService', () => {
     await service.create(context, { customerId, vehicleId });
 
     expect(prisma.serviceOrder.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ code: 'SO-0001' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ code: 'SO-0001' }),
+      }),
     );
   });
 
   it('increments code from the last existing order', async () => {
     prisma.serviceOrder.findFirst.mockResolvedValueOnce({ code: 'SO-0005' }); // code lookup
-    prisma.serviceOrder.create.mockResolvedValue({ ...baseOrder, code: 'SO-0006' });
+    prisma.serviceOrder.create.mockResolvedValue({
+      ...baseOrder,
+      code: 'SO-0006',
+    });
 
     await service.create(context, { customerId, vehicleId });
 
     expect(prisma.serviceOrder.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ code: 'SO-0006' }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({ code: 'SO-0006' }),
+      }),
     );
   });
 
   it('throws NotFoundException when customer does not exist in the workshop', async () => {
     prisma.customer.findFirst.mockResolvedValue(null);
 
-    await expect(service.create(context, { customerId, vehicleId })).rejects.toEqual(
-      new NotFoundException('Customer not found.'),
-    );
+    await expect(
+      service.create(context, { customerId, vehicleId }),
+    ).rejects.toEqual(new NotFoundException('Customer not found.'));
     expect(prisma.serviceOrder.create).not.toHaveBeenCalled();
   });
 
   it('throws NotFoundException when vehicle does not belong to customer', async () => {
     prisma.vehicle.findFirst.mockResolvedValue(null);
 
-    await expect(service.create(context, { customerId, vehicleId })).rejects.toEqual(
+    await expect(
+      service.create(context, { customerId, vehicleId }),
+    ).rejects.toEqual(
       new NotFoundException('Vehicle not found for this customer.'),
     );
     expect(prisma.serviceOrder.create).not.toHaveBeenCalled();
@@ -157,8 +178,40 @@ describe('ServiceOrdersService', () => {
       .mockResolvedValueOnce(null); // technician
 
     await expect(
-      service.create(context, { customerId, vehicleId, technicianId: techMembershipId }),
+      service.create(context, {
+        customerId,
+        vehicleId,
+        technicianId: techMembershipId,
+      }),
     ).rejects.toEqual(new NotFoundException('Technician not found.'));
+  });
+
+  it('creates an order with an active technician membership', async () => {
+    prisma.membership.findFirst
+      .mockResolvedValueOnce({ userId: membershipUserId })
+      .mockResolvedValueOnce({ userId: techUserId });
+    prisma.serviceOrder.create.mockResolvedValue({
+      ...baseOrder,
+      assignedTechnicianId: techUserId,
+      assignedTechnician: {
+        id: techMembershipId,
+        userId: techUserId,
+        displayName: 'Tech Ana',
+      },
+    });
+
+    const result = await service.create(context, {
+      customerId,
+      vehicleId,
+      technicianId: techMembershipId,
+    });
+
+    expect(prisma.serviceOrder.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ assignedTechnicianId: techUserId }),
+      }),
+    );
+    expect(result.assignedTechnician?.membershipId).toBe(techMembershipId);
   });
 
   it('lists service orders with pagination and scopes to workshop', async () => {
@@ -179,6 +232,32 @@ describe('ServiceOrdersService', () => {
     );
   });
 
+  it('lists only active technician memberships from the active workshop', async () => {
+    prisma.membership.findMany.mockResolvedValue([
+      { id: techMembershipId, userId: techUserId, displayName: 'Tech Ana' },
+    ]);
+
+    const result = await service.listAssignableTechnicians(context);
+
+    expect(result).toEqual([
+      {
+        membershipId: techMembershipId,
+        userId: techUserId,
+        displayName: 'Tech Ana',
+      },
+    ]);
+    expect(prisma.membership.findMany).toHaveBeenCalledWith({
+      where: {
+        workshopId: context.workshopId,
+        isActive: true,
+        role: { name: UserRole.TECHNICIAN },
+        user: { isActive: true },
+      },
+      select: { id: true, userId: true, displayName: true },
+      orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
+    });
+  });
+
   it('filters list by status when provided', async () => {
     prisma.serviceOrder.findMany.mockResolvedValue([]);
     prisma.serviceOrder.count.mockResolvedValue(0);
@@ -187,7 +266,9 @@ describe('ServiceOrdersService', () => {
 
     expect(prisma.serviceOrder.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ status: ServiceOrderStatus.DIAGNOSIS }),
+        where: expect.objectContaining({
+          status: ServiceOrderStatus.DIAGNOSIS,
+        }),
       }),
     );
   });
@@ -218,7 +299,9 @@ describe('ServiceOrdersService', () => {
     });
 
     await expect(
-      service.changeStatus(context, orderId, { status: ServiceOrderStatus.DELIVERED }),
+      service.changeStatus(context, orderId, {
+        status: ServiceOrderStatus.DELIVERED,
+      }),
     ).rejects.toEqual(
       new BadRequestException('Cannot transition from RECEIVED to DELIVERED.'),
     );
@@ -267,7 +350,9 @@ describe('ServiceOrdersService', () => {
       closedAt: now,
     });
 
-    await service.changeStatus(context, orderId, { status: ServiceOrderStatus.DELIVERED });
+    await service.changeStatus(context, orderId, {
+      status: ServiceOrderStatus.DELIVERED,
+    });
 
     expect(prisma.serviceOrder.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -287,16 +372,25 @@ describe('ServiceOrdersService', () => {
 
     await expect(
       service.update(nonAdminContext, orderId, { receptionNotes: 'edit' }),
-    ).rejects.toEqual(new ForbiddenException('Delivered orders cannot be modified.'));
+    ).rejects.toEqual(
+      new ForbiddenException('Delivered orders cannot be modified.'),
+    );
   });
 
   it('assigns a technician by resolving userId from membership', async () => {
-    prisma.serviceOrder.findFirst.mockResolvedValue({ id: orderId, status: ServiceOrderStatus.RECEIVED });
+    prisma.serviceOrder.findFirst.mockResolvedValue({
+      id: orderId,
+      status: ServiceOrderStatus.RECEIVED,
+    });
     prisma.membership.findFirst.mockResolvedValueOnce({ userId: techUserId });
     prisma.serviceOrder.update.mockResolvedValue({
       ...baseOrder,
       assignedTechnicianId: techUserId,
-      assignedTechnician: { userId: techUserId, displayName: 'Tech Ana' },
+      assignedTechnician: {
+        id: techMembershipId,
+        userId: techUserId,
+        displayName: 'Tech Ana',
+      },
     });
 
     const result = await service.assignTechnician(context, orderId, {
@@ -306,12 +400,64 @@ describe('ServiceOrdersService', () => {
     expect(prisma.serviceOrder.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { assignedTechnicianId: techUserId } }),
     );
-    expect(result.assignedTechnician).toEqual({ userId: techUserId, displayName: 'Tech Ana' });
+    expect(result.assignedTechnician).toEqual({
+      membershipId: techMembershipId,
+      userId: techUserId,
+      displayName: 'Tech Ana',
+    });
+  });
+
+  it('validates technician role, membership activity, and user activity', async () => {
+    prisma.serviceOrder.findFirst.mockResolvedValue({
+      id: orderId,
+      status: ServiceOrderStatus.RECEIVED,
+    });
+    prisma.membership.findFirst.mockResolvedValueOnce({ userId: techUserId });
+    prisma.serviceOrder.update.mockResolvedValue(baseOrder);
+
+    await service.assignTechnician(context, orderId, {
+      technicianId: techMembershipId,
+    });
+
+    expect(prisma.membership.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: techMembershipId,
+        workshopId: context.workshopId,
+        isActive: true,
+        role: { name: UserRole.TECHNICIAN },
+        user: { isActive: true },
+      },
+      select: { userId: true },
+    });
+  });
+
+  it('rejects assigning a technician to a delivered order for an advisor', async () => {
+    prisma.serviceOrder.findFirst.mockResolvedValue({
+      id: orderId,
+      status: ServiceOrderStatus.DELIVERED,
+    });
+
+    await expect(
+      service.assignTechnician(
+        { ...context, role: UserRole.ADVISOR },
+        orderId,
+        { technicianId: techMembershipId },
+      ),
+    ).rejects.toEqual(
+      new ForbiddenException('Delivered orders cannot be modified.'),
+    );
+    expect(prisma.membership.findFirst).not.toHaveBeenCalled();
   });
 
   it('unassigns technician when technicianId is null', async () => {
-    prisma.serviceOrder.findFirst.mockResolvedValue({ id: orderId, status: ServiceOrderStatus.IN_PROGRESS });
-    prisma.serviceOrder.update.mockResolvedValue({ ...baseOrder, assignedTechnicianId: null });
+    prisma.serviceOrder.findFirst.mockResolvedValue({
+      id: orderId,
+      status: ServiceOrderStatus.IN_PROGRESS,
+    });
+    prisma.serviceOrder.update.mockResolvedValue({
+      ...baseOrder,
+      assignedTechnicianId: null,
+    });
 
     await service.assignTechnician(context, orderId, { technicianId: null });
 

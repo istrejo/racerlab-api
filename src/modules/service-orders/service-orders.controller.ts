@@ -36,6 +36,7 @@ import { CreateServiceOrderDto } from './dto/create-service-order.dto';
 import { ListServiceOrdersQueryDto } from './dto/list-service-orders-query.dto';
 import { ServiceOrderDetailResponseDto } from './dto/service-order-detail-response.dto';
 import { ServiceOrderPageResponseDto } from './dto/service-order-page-response.dto';
+import { TechnicianSummaryDto } from './dto/technician-summary.dto';
 import { UpdateServiceOrderDto } from './dto/update-service-order.dto';
 import { ServiceOrdersService } from './service-orders.service';
 
@@ -60,6 +61,18 @@ export class ServiceOrdersController {
     @Query() query: ListServiceOrdersQueryDto,
   ): Promise<ServiceOrderPageResponseDto> {
     return this.serviceOrdersService.list(context, query);
+  }
+
+  @Get('assignable-technicians')
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
+  @ApiOperation({
+    summary: 'List active technicians assignable in the active workshop',
+  })
+  @ApiOkResponse({ type: [TechnicianSummaryDto] })
+  listAssignableTechnicians(
+    @CurrentWorkshop() context: WorkshopContext,
+  ): Promise<TechnicianSummaryDto[]> {
+    return this.serviceOrdersService.listAssignableTechnicians(context);
   }
 
   @Get(':id')

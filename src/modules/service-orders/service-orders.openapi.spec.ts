@@ -2,6 +2,8 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
 import { createSwaggerDocumentBuilder } from '../../config/swagger.config';
+import { WORKSHOP_RESOURCE_WRITE_ROLES } from '../../common/auth/workshop-role-policy';
+import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { ServiceOrdersController } from './service-orders.controller';
 import { ServiceOrdersService } from './service-orders.service';
 
@@ -27,6 +29,7 @@ describe('ServiceOrders OpenAPI contract', () => {
             update: jest.fn(),
             changeStatus: jest.fn(),
             assignTechnician: jest.fn(),
+            listAssignableTechnicians: jest.fn(),
           },
         },
       ],
@@ -34,26 +37,49 @@ describe('ServiceOrders OpenAPI contract', () => {
 
     app = module.createNestApplication();
     await app.init();
-    document = SwaggerModule.createDocument(app, createSwaggerDocumentBuilder().build());
+    document = SwaggerModule.createDocument(
+      app,
+      createSwaggerDocumentBuilder().build(),
+    );
   });
 
   afterAll(async () => app.close());
 
-  it('documents all six protected service-order operations', () => {
+  it('documents all protected service-order operations', () => {
     const base = '/service-orders';
     expect(document.paths[base]?.get?.security).toEqual([{ bearer: [] }]);
     expect(document.paths[base]?.post?.security).toEqual([{ bearer: [] }]);
-    expect(document.paths[`${base}/{id}`]?.get?.security).toEqual([{ bearer: [] }]);
-    expect(document.paths[`${base}/{id}`]?.patch?.security).toEqual([{ bearer: [] }]);
-    expect(document.paths[`${base}/{id}/status`]?.patch?.security).toEqual([{ bearer: [] }]);
-    expect(document.paths[`${base}/{id}/technician`]?.patch?.security).toEqual([{ bearer: [] }]);
+    expect(
+      document.paths[`${base}/assignable-technicians`]?.get?.security,
+    ).toEqual([{ bearer: [] }]);
+    expect(document.paths[`${base}/{id}`]?.get?.security).toEqual([
+      { bearer: [] },
+    ]);
+    expect(document.paths[`${base}/{id}`]?.patch?.security).toEqual([
+      { bearer: [] },
+    ]);
+    expect(document.paths[`${base}/{id}/status`]?.patch?.security).toEqual([
+      { bearer: [] },
+    ]);
+    expect(document.paths[`${base}/{id}/technician`]?.patch?.security).toEqual([
+      { bearer: [] },
+    ]);
+  });
+
+  it('restricts assignable technicians to service-order write roles', () => {
+    expect(
+      Reflect.getMetadata(
+        ROLES_KEY,
+        ServiceOrdersController.prototype.listAssignableTechnicians,
+      ),
+    ).toEqual(WORKSHOP_RESOURCE_WRITE_ROLES);
   });
 
   it('publishes service order list fields and pagination metadata', () => {
-    const response = document.components?.schemas
-      ?.ServiceOrderResponseDto as OpenApiSchema | undefined;
-    const page = document.components?.schemas
-      ?.ServiceOrderPageResponseDto as OpenApiSchema | undefined;
+    const response = document.components?.schemas?.ServiceOrderResponseDto as
+      OpenApiSchema | undefined;
+    const page = document.components?.schemas?.ServiceOrderPageResponseDto as
+      OpenApiSchema | undefined;
 
     const fields = Object.keys(response?.properties ?? {});
     expect(fields).toContain('id');
@@ -87,6 +113,7 @@ describe('ServiceOrders OpenAPI contract', () => {
     for (const operation of [
       document.paths[base]?.get,
       document.paths[base]?.post,
+      document.paths[`${base}/assignable-technicians`]?.get,
       document.paths[`${base}/{id}`]?.get,
       document.paths[`${base}/{id}`]?.patch,
       document.paths[`${base}/{id}/status`]?.patch,
@@ -101,7 +128,14 @@ describe('ServiceOrders OpenAPI contract', () => {
     const parameters = document.paths['/service-orders']?.get?.parameters ?? [];
     const names = parameters.map((p) => 'name' in p && p.name);
     expect(names).toEqual(
-      expect.arrayContaining(['search', 'status', 'customerId', 'vehicleId', 'page', 'limit']),
+      expect.arrayContaining([
+        'search',
+        'status',
+        'customerId',
+        'vehicleId',
+        'page',
+        'limit',
+      ]),
     );
   });
 });

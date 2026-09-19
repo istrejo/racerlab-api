@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { QuoteStatus } from '@prisma/client';
+import { QuoteApprovalMethod, QuoteStatus } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { trimNullableString } from '../../service-orders/dto/service-order-input.transforms';
@@ -10,14 +10,24 @@ export class ChangeQuoteStatusDto {
   status!: QuoteStatus;
 
   @ApiPropertyOptional({
+    enum: QuoteApprovalMethod,
+    nullable: true,
+    example: QuoteApprovalMethod.WHATSAPP,
+    description: 'How the customer approved or rejected. Required for APPROVED and REJECTED.',
+  })
+  @IsOptional()
+  @IsEnum(QuoteApprovalMethod)
+  approvalMethod?: QuoteApprovalMethod | null;
+
+  @ApiPropertyOptional({
     nullable: true,
     maxLength: 200,
-    example: 'WHATSAPP',
-    description: 'How the customer approved or rejected. Required for APPROVED and REJECTED.',
+    example: 'Reference 4821, approved by the vehicle owner.',
+    description: 'Free-text detail supporting the approval method.',
   })
   @Transform(trimNullableString)
   @IsOptional()
   @IsString()
   @MaxLength(200)
-  approvalMethod?: string | null;
+  approvalMethodDetail?: string | null;
 }

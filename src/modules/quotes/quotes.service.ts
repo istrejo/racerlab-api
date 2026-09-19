@@ -29,6 +29,7 @@ const ALLOWED_TRANSITIONS: Record<QuoteStatus, QuoteStatus[]> = {
   [QuoteStatus.REJECTED]: [],
   [QuoteStatus.EXPIRED]: [],
   [QuoteStatus.CANCELLED]: [],
+  [QuoteStatus.SUPERSEDED]: [],
 };
 
 const QUOTE_INCLUDE = {
@@ -351,10 +352,18 @@ export class QuotesService {
         data: {
           status: dto.status,
           ...(dto.status === QuoteStatus.APPROVED
-            ? { approvalMethod: dto.approvalMethod, approvedAt: new Date() }
+            ? {
+                approvalMethod: dto.approvalMethod,
+                approvalMethodDetail: dto.approvalMethodDetail ?? null,
+                approvedAt: new Date(),
+              }
             : {}),
           ...(dto.status === QuoteStatus.REJECTED
-            ? { approvalMethod: dto.approvalMethod, rejectedAt: new Date() }
+            ? {
+                approvalMethod: dto.approvalMethod,
+                approvalMethodDetail: dto.approvalMethodDetail ?? null,
+                rejectedAt: new Date(),
+              }
             : {}),
         },
         include: QUOTE_INCLUDE,

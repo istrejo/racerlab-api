@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { QuoteStatus } from '@prisma/client';
+import { QuoteApprovalMethod, QuoteStatus } from '@prisma/client';
 import { MemberSummaryDto } from '../../service-orders/dto/member-summary.dto';
 import { QuoteItemResponseDto } from './quote-item-response.dto';
 
@@ -13,6 +13,24 @@ export class QuoteResponseDto {
   @ApiProperty({ enum: QuoteStatus })
   status!: QuoteStatus;
 
+  @ApiProperty({
+    example: 1,
+    minimum: 1,
+    description: 'Version within the service order.',
+  })
+  version!: number;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: 'The quote this version was cloned from.',
+  })
+  sourceQuoteId!: string | null;
+
+  @ApiProperty({ example: 'EUR', description: 'ISO 4217 currency code.' })
+  currencyCode!: string;
+
   @ApiProperty({ example: 91 })
   subtotal!: number;
 
@@ -25,8 +43,11 @@ export class QuoteResponseDto {
   @ApiProperty({ example: 91 })
   total!: number;
 
-  @ApiProperty({ nullable: true, type: String })
-  approvalMethod!: string | null;
+  @ApiProperty({ enum: QuoteApprovalMethod, nullable: true })
+  approvalMethod!: QuoteApprovalMethod | null;
+
+  @ApiProperty({ nullable: true, type: String, maxLength: 200 })
+  approvalMethodDetail!: string | null;
 
   @ApiProperty({ nullable: true, type: String, format: 'date-time' })
   approvedAt!: Date | null;

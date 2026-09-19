@@ -1,0 +1,18 @@
+schema: spec-driven
+change: complete-quote-workflow
+planning_home: openspec/changes/complete-quote-workflow
+artifact_store: openspec
+delivery_strategy: auto-chain
+chain_strategy: stacked-to-main
+phases:
+  proposal: complete
+  spec: complete
+  design: complete
+  tasks: complete
+  apply: in_progress
+  verify: pending
+  archive: pending
+apply_progress:
+  completed_tasks: 2
+  total_tasks: 11
+  current_slice: api-1a-schema-migration

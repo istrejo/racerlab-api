@@ -3,7 +3,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { ServiceOrderStatus, UserRole } from '@prisma/client';
+import { QuoteStatus, ServiceOrderStatus, UserRole } from '@prisma/client';
 import { ServiceOrdersService } from './service-orders.service';
 
 describe('ServiceOrdersService', () => {
@@ -74,6 +74,7 @@ describe('ServiceOrdersService', () => {
       count: jest.fn(),
       update: jest.fn(),
     },
+    quote: { updateMany: jest.fn() },
     $transaction: jest.fn(),
   };
 
@@ -361,6 +362,50 @@ describe('ServiceOrdersService', () => {
         }),
       }),
     );
+  });
+
+  it('cancels the open quotes when the order is cancelled', async () => {
+    prisma.serviceOrder.findFirst.mockResolvedValueOnce({
+      id: orderId,
+      status: ServiceOrderStatus.QUOTED,
+      code: 'SO-0001',
+    });
+    prisma.serviceOrder.update.mockResolvedValue({
+      ...baseOrder,
+      status: ServiceOrderStatus.CANCELLED,
+      closedAt: now,
+    });
+
+    await service.changeStatus(context, orderId, {
+      status: ServiceOrderStatus.CANCELLED,
+    });
+
+    expect(prisma.quote.updateMany).toHaveBeenCalledWith({
+      where: {
+        serviceOrderId: orderId,
+        workshopId: context.workshopId,
+        status: { in: [QuoteStatus.DRAFT, QuoteStatus.ACTIVE] },
+      },
+      data: { status: QuoteStatus.CANCELLED },
+    });
+  });
+
+  it('leaves quotes untouched on non-cancelling transitions', async () => {
+    prisma.serviceOrder.findFirst.mockResolvedValueOnce({
+      id: orderId,
+      status: ServiceOrderStatus.RECEIVED,
+      code: 'SO-0001',
+    });
+    prisma.serviceOrder.update.mockResolvedValue({
+      ...baseOrder,
+      status: ServiceOrderStatus.DIAGNOSIS,
+    });
+
+    await service.changeStatus(context, orderId, {
+      status: ServiceOrderStatus.DIAGNOSIS,
+    });
+
+    expect(prisma.quote.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects updating a DELIVERED order by a non-admin', async () => {

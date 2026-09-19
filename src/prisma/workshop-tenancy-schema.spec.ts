@@ -71,3 +71,29 @@ describe('customer document uniqueness migration', () => {
     );
   });
 });
+
+describe('quote version contract migration', () => {
+  const migration = readFileSync(
+    join(
+      process.cwd(),
+      'prisma/migrations/20260905150000_complete_quote_version_contract/migration.sql',
+    ),
+    'utf8',
+  );
+
+  it('backfills deterministic versions, lineage, currency, and decision methods', () => {
+    expect(migration).toContain('ORDER BY "created_at", "id"');
+    expect(migration).toContain('LAG("id")');
+    expect(migration).toContain("\"currency_code\" = 'EUR'");
+    expect(migration).toContain('approval_method_detail');
+  });
+
+  it('fails diagnostically before enforcing aggregate uniqueness', () => {
+    expect(migration).toMatch(/^BEGIN;/);
+    expect(migration.trim()).toMatch(/COMMIT;$/);
+    expect(migration).toContain('Conflicting active or approved quotes');
+    expect(migration).toContain('quotes_one_draft_per_order_key');
+    expect(migration).toContain('quotes_one_active_or_approved_per_order_key');
+    expect(migration).toContain('quotes_workshop_id_service_order_id_version_key');
+  });
+});

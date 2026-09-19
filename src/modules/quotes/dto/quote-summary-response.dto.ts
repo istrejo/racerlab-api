@@ -12,10 +12,19 @@ export class QuoteSummaryResponseDto {
   @ApiProperty({ enum: QuoteStatus })
   status!: QuoteStatus;
 
+  @ApiProperty({ example: 1, minimum: 1 })
+  version!: number;
+
+  @ApiProperty({ example: 'EUR', description: 'ISO 4217 currency code.' })
+  currencyCode!: string;
+
   @ApiProperty({ example: 91 })
   total!: number;
 
-  @ApiProperty({ example: 3, description: 'Number of line items in the quote.' })
+  @ApiProperty({
+    example: 3,
+    description: 'Number of line items in the quote.',
+  })
   itemCount!: number;
 
   @ApiProperty({ type: QuoteServiceOrderSummaryDto })

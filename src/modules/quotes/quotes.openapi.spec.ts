@@ -28,6 +28,7 @@ describe('Quotes OpenAPI contract', () => {
             create: jest.fn(),
             update: jest.fn(),
             changeStatus: jest.fn(),
+            createVersion: jest.fn(),
           },
         },
       ],
@@ -42,6 +43,21 @@ describe('Quotes OpenAPI contract', () => {
   });
 
   afterAll(async () => app.close());
+
+  it('documents the version cloning operation', () => {
+    const operation =
+      document.paths['/service-orders/{serviceOrderId}/quotes/{id}/versions']
+        ?.post;
+
+    expect(operation?.security).toEqual([{ bearer: [] }]);
+    expect(operation?.responses).toHaveProperty('201');
+    expect(operation?.responses).toHaveProperty('400');
+    expect(operation?.responses).toHaveProperty('401');
+    expect(operation?.responses).toHaveProperty('403');
+    expect(operation?.responses).toHaveProperty('404');
+    expect(operation?.responses).toHaveProperty('409');
+    expect(operation?.requestBody).toBeUndefined();
+  });
 
   it('documents all five protected quote operations', () => {
     const base = '/service-orders/{serviceOrderId}/quotes';
@@ -72,7 +88,11 @@ describe('Quotes OpenAPI contract', () => {
         'discount',
         'tax',
         'total',
+        'version',
+        'sourceQuoteId',
+        'currencyCode',
         'approvalMethod',
+        'approvalMethodDetail',
         'approvedAt',
         'rejectedAt',
         'createdBy',
@@ -146,6 +166,8 @@ describe('Quotes OpenAPI contract', () => {
       expect.arrayContaining([
         'id',
         'status',
+        'version',
+        'currencyCode',
         'total',
         'itemCount',
         'serviceOrder',
@@ -168,8 +190,36 @@ describe('Quotes OpenAPI contract', () => {
     expect(document.paths[`${base}/{id}`]?.patch?.responses).toHaveProperty(
       '409',
     );
+    expect(document.paths[base]?.post?.responses).toHaveProperty('409');
     expect(
       document.paths[`${base}/{id}/status`]?.patch?.responses,
     ).toHaveProperty('409');
+  });
+
+  it('exposes only client-assignable statuses on the transition payload', () => {
+    const payload = document.components?.schemas?.ChangeQuoteStatusDto as
+      { properties?: Record<string, { enum?: string[] }> } | undefined;
+
+    expect(payload?.properties?.status?.enum).toEqual([
+      'ACTIVE',
+      'APPROVED',
+      'REJECTED',
+      'EXPIRED',
+      'CANCELLED',
+    ]);
+    expect(Object.keys(payload?.properties ?? {})).toEqual(
+      expect.arrayContaining(['approvalMethod', 'approvalMethodDetail']),
+    );
+  });
+
+  it('accepts an optional currency code on create and update', () => {
+    const create = document.components?.schemas?.CreateQuoteDto as
+      { properties?: Record<string, unknown>; required?: string[] } | undefined;
+    const update = document.components?.schemas?.UpdateQuoteDto as
+      { properties?: Record<string, unknown> } | undefined;
+
+    expect(Object.keys(create?.properties ?? {})).toContain('currencyCode');
+    expect(create?.required ?? []).not.toContain('currencyCode');
+    expect(Object.keys(update?.properties ?? {})).toContain('currencyCode');
   });
 });

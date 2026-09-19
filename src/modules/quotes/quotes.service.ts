@@ -5,11 +5,17 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, QuoteStatus, ServiceOrderStatus } from '@prisma/client';
+import {
+  Prisma,
+  QuoteApprovalMethod,
+  QuoteStatus,
+  ServiceOrderStatus,
+} from '@prisma/client';
 import type { WorkshopContext } from '../../common/auth/workshop-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ChangeQuoteStatusDto } from './dto/change-quote-status.dto';
 import { CreateQuoteDto } from './dto/create-quote.dto';
+import { DEFAULT_CURRENCY_CODE } from './dto/currency-code';
 import { ListQuotesQueryDto } from './dto/list-quotes-query.dto';
 import { QuoteItemInputDto } from './dto/quote-item-input.dto';
 import { QuotePageResponseDto } from './dto/quote-page-response.dto';
@@ -29,7 +35,23 @@ const ALLOWED_TRANSITIONS: Record<QuoteStatus, QuoteStatus[]> = {
   [QuoteStatus.REJECTED]: [],
   [QuoteStatus.EXPIRED]: [],
   [QuoteStatus.CANCELLED]: [],
+  [QuoteStatus.SUPERSEDED]: [],
 };
+
+/** Stages during which a quote may be created, edited, or versioned. */
+const QUOTABLE_ORDER_STATUSES: ServiceOrderStatus[] = [
+  ServiceOrderStatus.DIAGNOSIS,
+  ServiceOrderStatus.QUOTED,
+];
+
+/** A quote may only be cloned once its own lifecycle has ended. */
+const VERSIONABLE_QUOTE_STATUSES: QuoteStatus[] = [
+  QuoteStatus.ACTIVE,
+  QuoteStatus.REJECTED,
+  QuoteStatus.EXPIRED,
+  QuoteStatus.CANCELLED,
+  QuoteStatus.SUPERSEDED,
+];
 
 const QUOTE_INCLUDE = {
   createdBy: { select: { userId: true, displayName: true } },
@@ -78,7 +100,18 @@ export class QuotesService {
     dto: CreateQuoteDto,
   ): Promise<QuoteResponseDto> {
     const quote = await this.prisma.$transaction(async (tx) => {
-      await this.assertServiceOrderExists(tx, context, serviceOrderId);
+      await this.lockQuotableServiceOrder(tx, context, serviceOrderId);
+
+      const existing = await tx.quote.findFirst({
+        where: { serviceOrderId, workshopId: context.workshopId },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new ConflictException(
+          'This service order already has a quote. Create a new version instead.',
+        );
+      }
+
       const creatorUserId = await this.resolveUserId(tx, context);
       const totals = this.computeTotals(
         dto.items,
@@ -86,35 +119,128 @@ export class QuotesService {
         dto.tax ?? null,
       );
 
-      return tx.quote.create({
-        data: {
-          workshopId: context.workshopId,
-          serviceOrderId,
-          createdById: creatorUserId,
-          subtotal: totals.subtotal,
-          discount: totals.discount,
-          tax: totals.tax,
-          total: totals.total,
-          items: {
-            create: dto.items.map((item, index) => ({
-              type: item.type,
-              description: item.description,
-              quantity: new Prisma.Decimal(item.quantity),
-              unitPrice: new Prisma.Decimal(item.unitPrice),
-              costPrice:
-                item.costPrice != null
-                  ? new Prisma.Decimal(item.costPrice)
-                  : null,
-              total: totals.itemTotals[index],
-            })),
-          },
-        },
-        include: QUOTE_INCLUDE,
-      });
+      return this.translateWriteConflict(
+        () =>
+          tx.quote.create({
+            data: {
+              workshopId: context.workshopId,
+              serviceOrderId,
+              createdById: creatorUserId,
+              version: 1,
+              sourceQuoteId: null,
+              currencyCode: dto.currencyCode ?? DEFAULT_CURRENCY_CODE,
+              subtotal: totals.subtotal,
+              discount: totals.discount,
+              tax: totals.tax,
+              total: totals.total,
+              items: {
+                create: this.buildItemInputs(dto.items, totals),
+              },
+            },
+            include: QUOTE_INCLUDE,
+          }),
+        'Another quote for this service order was created concurrently.',
+      );
     });
 
     this.logger.log(
       `Quote ${quote.id} created for service order ${serviceOrderId} in workshop ${context.workshopId} by membership ${context.membershipId}.`,
+    );
+    return this.toResponse(quote);
+  }
+
+  async createVersion(
+    context: WorkshopContext,
+    serviceOrderId: string,
+    quoteId: string,
+  ): Promise<QuoteResponseDto> {
+    const quote = await this.prisma.$transaction(async (tx) => {
+      await this.lockQuotableServiceOrder(tx, context, serviceOrderId);
+
+      const source = await tx.quote.findFirst({
+        where: { id: quoteId, serviceOrderId, workshopId: context.workshopId },
+        include: QUOTE_INCLUDE,
+      });
+
+      if (!source) {
+        throw new NotFoundException('Quote not found.');
+      }
+
+      if (!VERSIONABLE_QUOTE_STATUSES.includes(source.status)) {
+        throw new ConflictException(
+          `A quote in status ${source.status} cannot be versioned.`,
+        );
+      }
+
+      const newer = await tx.quote.findFirst({
+        where: {
+          serviceOrderId,
+          workshopId: context.workshopId,
+          version: { gt: source.version },
+        },
+        select: { id: true },
+      });
+      if (newer) {
+        throw new ConflictException(
+          'Only the latest quote version can be cloned.',
+        );
+      }
+
+      const existingDraft = await tx.quote.findFirst({
+        where: {
+          serviceOrderId,
+          workshopId: context.workshopId,
+          status: QuoteStatus.DRAFT,
+        },
+        select: { id: true },
+      });
+      if (existingDraft) {
+        throw new ConflictException(
+          'This service order already has a draft quote.',
+        );
+      }
+
+      const creatorUserId = await this.resolveUserId(tx, context);
+
+      return this.translateWriteConflict(
+        () =>
+          tx.quote.create({
+            data: {
+              workshopId: context.workshopId,
+              serviceOrderId,
+              createdById: creatorUserId,
+              status: QuoteStatus.DRAFT,
+              version: source.version + 1,
+              sourceQuoteId: source.id,
+              currencyCode: source.currencyCode,
+              subtotal: source.subtotal,
+              discount: source.discount,
+              tax: source.tax,
+              total: source.total,
+              approvalMethod: null,
+              approvalMethodDetail: null,
+              approvedAt: null,
+              rejectedAt: null,
+              items: {
+                create: source.items.map((item) => ({
+                  type: item.type,
+                  description: item.description,
+                  quantity: item.quantity,
+                  unitPrice: item.unitPrice,
+                  costPrice: item.costPrice,
+                  total: item.total,
+                  inventoryProductId: item.inventoryProductId,
+                })),
+              },
+            },
+            include: QUOTE_INCLUDE,
+          }),
+        'Another quote version for this service order was created concurrently.',
+      );
+    });
+
+    this.logger.log(
+      `Quote ${quote.id} created as version ${quote.version} from ${quoteId} in workshop ${context.workshopId} by membership ${context.membershipId}.`,
     );
     return this.toResponse(quote);
   }
@@ -160,7 +286,7 @@ export class QuotesService {
       this.prisma.quote.findMany({
         where,
         include: QUOTE_SUMMARY_INCLUDE,
-        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        orderBy: [{ createdAt: 'desc' }, { version: 'desc' }, { id: 'asc' }],
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -185,7 +311,7 @@ export class QuotesService {
     const quotes = await this.prisma.quote.findMany({
       where: { serviceOrderId, workshopId: context.workshopId },
       include: QUOTE_INCLUDE,
-      orderBy: { createdAt: 'asc' },
+      orderBy: { version: 'desc' },
     });
 
     return quotes.map((quote) => this.toResponse(quote));
@@ -215,6 +341,8 @@ export class QuotesService {
     dto: UpdateQuoteDto,
   ): Promise<QuoteResponseDto> {
     const quote = await this.prisma.$transaction(async (tx) => {
+      await this.lockQuotableServiceOrder(tx, context, serviceOrderId);
+
       const existing = await tx.quote.findFirst({
         where: { id: quoteId, serviceOrderId, workshopId: context.workshopId },
         include: { items: { orderBy: { createdAt: 'asc' as const } } },
@@ -266,21 +394,10 @@ export class QuotesService {
           discount: totals.discount,
           tax: totals.tax,
           total: totals.total,
+          ...(dto.currencyCode ? { currencyCode: dto.currencyCode } : {}),
           ...(dto.items
             ? {
-                items: {
-                  create: dto.items.map((item, index) => ({
-                    type: item.type,
-                    description: item.description,
-                    quantity: new Prisma.Decimal(item.quantity),
-                    unitPrice: new Prisma.Decimal(item.unitPrice),
-                    costPrice:
-                      item.costPrice != null
-                        ? new Prisma.Decimal(item.costPrice)
-                        : null,
-                    total: totals.itemTotals[index],
-                  })),
-                },
+                items: { create: this.buildItemInputs(dto.items, totals) },
               }
             : {}),
         },
@@ -301,6 +418,8 @@ export class QuotesService {
     dto: ChangeQuoteStatusDto,
   ): Promise<QuoteResponseDto> {
     const quote = await this.prisma.$transaction(async (tx) => {
+      const order = await this.lockServiceOrder(tx, context, serviceOrderId);
+
       const existing = await tx.quote.findFirst({
         where: { id: quoteId, serviceOrderId, workshopId: context.workshopId },
         select: { id: true, status: true },
@@ -317,51 +436,91 @@ export class QuotesService {
         );
       }
 
-      if (
-        dto.status === QuoteStatus.ACTIVE ||
-        dto.status === QuoteStatus.APPROVED
-      ) {
-        const conflicting = await tx.quote.findFirst({
-          where: {
-            serviceOrderId,
-            workshopId: context.workshopId,
-            id: { not: existing.id },
-            status: { in: [QuoteStatus.ACTIVE, QuoteStatus.APPROVED] },
-          },
-          select: { id: true },
-        });
-        if (conflicting) {
+      this.assertDecisionIsConsistent(dto);
+
+      if (dto.status === QuoteStatus.ACTIVE) {
+        await this.assertNoApprovedQuote(
+          tx,
+          context,
+          serviceOrderId,
+          existing.id,
+        );
+      }
+
+      if (dto.status === QuoteStatus.APPROVED) {
+        await this.assertNoCompetingQuote(
+          tx,
+          context,
+          serviceOrderId,
+          existing.id,
+        );
+        if (order.status !== ServiceOrderStatus.QUOTED) {
           throw new ConflictException(
-            'Another quote is already active or approved for this service order.',
+            'The service order is no longer in QUOTED status.',
           );
         }
       }
 
-      const requiresMethod =
-        dto.status === QuoteStatus.APPROVED ||
-        dto.status === QuoteStatus.REJECTED;
-      if (requiresMethod && !dto.approvalMethod) {
-        throw new BadRequestException(
-          'approvalMethod is required to approve or reject a quote.',
+      // Supersede before activating so the partial unique index never sees two
+      // ACTIVE rows for the order.
+      if (dto.status === QuoteStatus.ACTIVE) {
+        await tx.quote.updateMany({
+          where: {
+            serviceOrderId,
+            workshopId: context.workshopId,
+            id: { not: existing.id },
+            status: QuoteStatus.ACTIVE,
+          },
+          data: { status: QuoteStatus.SUPERSEDED },
+        });
+      }
+
+      const updated = await this.translateWriteConflict(
+        () =>
+          tx.quote.update({
+            where: { id: existing.id },
+            data: {
+              status: dto.status,
+              ...(dto.status === QuoteStatus.APPROVED
+                ? {
+                    approvalMethod: dto.approvalMethod,
+                    approvalMethodDetail: dto.approvalMethodDetail ?? null,
+                    approvedAt: new Date(),
+                  }
+                : {}),
+              ...(dto.status === QuoteStatus.REJECTED
+                ? {
+                    approvalMethod: dto.approvalMethod,
+                    approvalMethodDetail: dto.approvalMethodDetail ?? null,
+                    rejectedAt: new Date(),
+                  }
+                : {}),
+            },
+            include: QUOTE_INCLUDE,
+          }),
+        'Another quote for this service order changed status concurrently.',
+      );
+
+      if (dto.status === QuoteStatus.ACTIVE) {
+        await this.advanceOrder(
+          tx,
+          context,
+          order,
+          ServiceOrderStatus.DIAGNOSIS,
+          ServiceOrderStatus.QUOTED,
+          'Quote activated.',
         );
       }
 
-      const updated = await tx.quote.update({
-        where: { id: existing.id },
-        data: {
-          status: dto.status,
-          ...(dto.status === QuoteStatus.APPROVED
-            ? { approvalMethod: dto.approvalMethod, approvedAt: new Date() }
-            : {}),
-          ...(dto.status === QuoteStatus.REJECTED
-            ? { approvalMethod: dto.approvalMethod, rejectedAt: new Date() }
-            : {}),
-        },
-        include: QUOTE_INCLUDE,
-      });
-
       if (dto.status === QuoteStatus.APPROVED) {
-        await this.syncServiceOrderApproval(tx, context, serviceOrderId);
+        await this.advanceOrder(
+          tx,
+          context,
+          order,
+          ServiceOrderStatus.QUOTED,
+          ServiceOrderStatus.APPROVED,
+          'Quote approved.',
+        );
       }
 
       return updated;
@@ -373,17 +532,19 @@ export class QuotesService {
     return this.toResponse(quote);
   }
 
-  private async syncServiceOrderApproval(
+  /**
+   * Advances the locked order only when it still sits on the expected stage, so
+   * a quote transition never rewrites an order that moved on independently.
+   */
+  private async advanceOrder(
     tx: Prisma.TransactionClient,
     context: WorkshopContext,
-    serviceOrderId: string,
+    order: { id: string; status: ServiceOrderStatus },
+    from: ServiceOrderStatus,
+    to: ServiceOrderStatus,
+    comment: string,
   ): Promise<void> {
-    const order = await tx.serviceOrder.findFirst({
-      where: { id: serviceOrderId, workshopId: context.workshopId },
-      select: { id: true, status: true },
-    });
-
-    if (!order || order.status !== ServiceOrderStatus.QUOTED) {
+    if (order.status !== from) {
       return;
     }
 
@@ -392,17 +553,118 @@ export class QuotesService {
     await tx.serviceOrder.update({
       where: { id: order.id },
       data: {
-        status: ServiceOrderStatus.APPROVED,
+        status: to,
         statusHistory: {
           create: {
-            previousStatus: order.status,
-            newStatus: ServiceOrderStatus.APPROVED,
+            previousStatus: from,
+            newStatus: to,
             changedById: changerUserId,
-            comment: 'Quote approved.',
+            comment,
           },
         },
       },
     });
+  }
+
+  /** Approval is terminal, so an approved quote blocks any new activation. */
+  private async assertNoApprovedQuote(
+    tx: Prisma.TransactionClient,
+    context: WorkshopContext,
+    serviceOrderId: string,
+    excludeQuoteId: string,
+  ): Promise<void> {
+    const approved = await tx.quote.findFirst({
+      where: {
+        serviceOrderId,
+        workshopId: context.workshopId,
+        id: { not: excludeQuoteId },
+        status: QuoteStatus.APPROVED,
+      },
+      select: { id: true },
+    });
+    if (approved) {
+      throw new ConflictException(
+        'Another quote is already approved for this service order.',
+      );
+    }
+  }
+
+  private async assertNoCompetingQuote(
+    tx: Prisma.TransactionClient,
+    context: WorkshopContext,
+    serviceOrderId: string,
+    excludeQuoteId: string,
+  ): Promise<void> {
+    const conflicting = await tx.quote.findFirst({
+      where: {
+        serviceOrderId,
+        workshopId: context.workshopId,
+        id: { not: excludeQuoteId },
+        status: { in: [QuoteStatus.ACTIVE, QuoteStatus.APPROVED] },
+      },
+      select: { id: true },
+    });
+    if (conflicting) {
+      throw new ConflictException(
+        'Another quote is already active or approved for this service order.',
+      );
+    }
+  }
+
+  /**
+   * A decision needs a method; only `OTHER` carries free-text detail, and no
+   * other transition may record either.
+   */
+  private assertDecisionIsConsistent(dto: ChangeQuoteStatusDto): void {
+    const isDecision =
+      dto.status === QuoteStatus.APPROVED ||
+      dto.status === QuoteStatus.REJECTED;
+
+    if (!isDecision) {
+      if (dto.approvalMethod || dto.approvalMethodDetail) {
+        throw new BadRequestException(
+          'approvalMethod and approvalMethodDetail are only allowed when approving or rejecting.',
+        );
+      }
+      return;
+    }
+
+    if (!dto.approvalMethod) {
+      throw new BadRequestException(
+        'approvalMethod is required to approve or reject a quote.',
+      );
+    }
+
+    if (
+      dto.approvalMethod === QuoteApprovalMethod.OTHER &&
+      !dto.approvalMethodDetail
+    ) {
+      throw new BadRequestException(
+        'approvalMethodDetail is required when the approval method is OTHER.',
+      );
+    }
+
+    if (
+      dto.approvalMethod !== QuoteApprovalMethod.OTHER &&
+      dto.approvalMethodDetail
+    ) {
+      throw new BadRequestException(
+        'approvalMethodDetail is only allowed when the approval method is OTHER.',
+      );
+    }
+  }
+
+  /** Line items always derive their persisted total from the computed totals. */
+  private buildItemInputs(items: QuoteItemInputDto[], totals: QuoteTotals) {
+    return items.map((item, index) => ({
+      type: item.type,
+      description: item.description,
+      quantity: new Prisma.Decimal(item.quantity),
+      unitPrice: new Prisma.Decimal(item.unitPrice),
+      costPrice:
+        item.costPrice != null ? new Prisma.Decimal(item.costPrice) : null,
+      total: totals.itemTotals[index],
+    }));
   }
 
   private computeTotals(
@@ -438,6 +700,70 @@ export class QuotesService {
       total,
       itemTotals,
     };
+  }
+
+  /**
+   * Serializes every quote write for one service order on the order row, so
+   * version allocation and lifecycle checks cannot interleave. The partial
+   * unique indexes remain the final guard.
+   */
+  private async lockQuotableServiceOrder(
+    tx: Prisma.TransactionClient,
+    context: WorkshopContext,
+    serviceOrderId: string,
+  ): Promise<{ id: string; status: ServiceOrderStatus }> {
+    const order = await this.lockServiceOrder(tx, context, serviceOrderId);
+
+    if (!QUOTABLE_ORDER_STATUSES.includes(order.status)) {
+      throw new ConflictException(
+        'Quotes can only be written while the service order is in DIAGNOSIS or QUOTED.',
+      );
+    }
+
+    return order;
+  }
+
+  private async lockServiceOrder(
+    tx: Prisma.TransactionClient,
+    context: WorkshopContext,
+    serviceOrderId: string,
+  ): Promise<{ id: string; status: ServiceOrderStatus }> {
+    const locked = await tx.$queryRaw<
+      Array<{ id: string; status: ServiceOrderStatus }>
+    >`
+      SELECT "id", "status"
+      FROM "service_orders"
+      WHERE "id" = ${serviceOrderId}::uuid
+        AND "workshop_id" = ${context.workshopId}::uuid
+      FOR UPDATE
+    `;
+
+    if (locked.length !== 1) {
+      throw new NotFoundException('Service order not found.');
+    }
+
+    return locked[0];
+  }
+
+  /**
+   * The partial unique indexes are the authority on quote uniqueness, so a
+   * losing concurrent writer surfaces as a conflict rather than a 500.
+   */
+  private async translateWriteConflict<T>(
+    write: () => Promise<T>,
+    message: string,
+  ): Promise<T> {
+    try {
+      return await write();
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(message);
+      }
+      throw error;
+    }
   }
 
   private async assertServiceOrderExists(
@@ -476,6 +802,8 @@ export class QuotesService {
     return {
       id: quote.id,
       status: quote.status,
+      version: quote.version,
+      currencyCode: quote.currencyCode,
       total: quote.total.toNumber(),
       itemCount: quote._count.items,
       serviceOrder: {
@@ -506,11 +834,15 @@ export class QuotesService {
       id: quote.id,
       serviceOrderId: quote.serviceOrderId,
       status: quote.status,
+      version: quote.version,
+      sourceQuoteId: quote.sourceQuoteId,
+      currencyCode: quote.currencyCode,
       subtotal: quote.subtotal.toNumber(),
       discount: quote.discount ? quote.discount.toNumber() : null,
       tax: quote.tax ? quote.tax.toNumber() : null,
       total: quote.total.toNumber(),
       approvalMethod: quote.approvalMethod,
+      approvalMethodDetail: quote.approvalMethodDetail,
       approvedAt: quote.approvedAt,
       rejectedAt: quote.rejectedAt,
       createdBy: {

@@ -5,7 +5,12 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ServiceOrderStatus, UserRole } from '@prisma/client';
+import {
+  Prisma,
+  QuoteStatus,
+  ServiceOrderStatus,
+  UserRole,
+} from '@prisma/client';
 import type { WorkshopContext } from '../../common/auth/workshop-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AssignTechnicianDto } from './dto/assign-technician.dto';
@@ -329,6 +334,18 @@ export class ServiceOrdersService {
         },
         include: ORDER_DETAIL_INCLUDE,
       });
+
+      // A cancelled order cannot leave quotes open for a customer decision.
+      if (dto.status === ServiceOrderStatus.CANCELLED) {
+        await tx.quote.updateMany({
+          where: {
+            serviceOrderId: existing.id,
+            workshopId: context.workshopId,
+            status: { in: [QuoteStatus.DRAFT, QuoteStatus.ACTIVE] },
+          },
+          data: { status: QuoteStatus.CANCELLED },
+        });
+      }
 
       return updated;
     });

@@ -78,12 +78,35 @@ export class QuotesController {
   @ApiOperation({ summary: 'Create a draft quote for a service order' })
   @ApiCreatedResponse({ type: QuoteResponseDto })
   @ApiNotFoundResponse({ description: 'Service order not found.' })
+  @ApiConflictResponse({
+    description:
+      'The service order already has a quote or is not in a quotable stage.',
+  })
   create(
     @CurrentWorkshop() context: WorkshopContext,
     @Param('serviceOrderId', ParseUUIDPipe) serviceOrderId: string,
     @Body() dto: CreateQuoteDto,
   ): Promise<QuoteResponseDto> {
     return this.quotesService.create(context, serviceOrderId, dto);
+  }
+
+  @Post(':id/versions')
+  @Roles(...WORKSHOP_RESOURCE_WRITE_ROLES)
+  @ApiOperation({
+    summary: 'Clone the latest eligible quote into the next draft version',
+  })
+  @ApiCreatedResponse({ type: QuoteResponseDto })
+  @ApiNotFoundResponse({ description: 'Service order or quote not found.' })
+  @ApiConflictResponse({
+    description:
+      'The quote is not the latest eligible version, a draft already exists, or the service order is not in a quotable stage.',
+  })
+  createVersion(
+    @CurrentWorkshop() context: WorkshopContext,
+    @Param('serviceOrderId', ParseUUIDPipe) serviceOrderId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<QuoteResponseDto> {
+    return this.quotesService.createVersion(context, serviceOrderId, id);
   }
 
   @Patch(':id')

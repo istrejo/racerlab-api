@@ -43,7 +43,7 @@ describe('Customers API (e2e)', () => {
     remove: jest.fn().mockResolvedValue(undefined),
   };
   let app: INestApplication<App>;
-  let currentRole = UserRole.ADMIN;
+  let currentRole: UserRole = UserRole.ADMIN;
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({

@@ -110,7 +110,6 @@ describe('getAuthConfig', () => {
         JWT_SECRET: 'super-secret',
         AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
         JWT_ACCESS_TOKEN_TTL: '15m',
-        AUTH_REFRESH_TOKEN_SECRET: 'refresh-secret',
         NODE_ENV: 'production',
       }).refreshCookie.secure,
     ).toBe(true);

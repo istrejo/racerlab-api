@@ -196,8 +196,10 @@ describe('Workshop tenancy (e2e)', () => {
               : {
                   id: userId,
                   name: 'Ada',
+                  email: 'ada@example.com',
                   passwordHash: 'hash',
                   isActive: true,
+                  mustChangePassword,
                 },
           ),
         findUniqueOrThrow: jest

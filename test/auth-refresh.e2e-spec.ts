@@ -93,7 +93,10 @@ describe('Auth refresh rotation (e2e)', () => {
     };
 
     const prisma = {
-      user: { findMany: jest.fn().mockResolvedValue([user]) },
+      user: {
+        findMany: jest.fn().mockResolvedValue([user]),
+        findUnique: jest.fn().mockResolvedValue(user),
+      },
       authSession: {
         create: jest.fn().mockImplementation(({ data }: { data: any }) => {
           const session: SessionRecord = {
@@ -220,7 +223,10 @@ describe('Auth refresh rotation (e2e)', () => {
       .overrideProvider(PrismaService)
       .useValue(prisma)
       .overrideProvider(PasswordHasherService)
-      .useValue({ verify: jest.fn().mockResolvedValue(true) })
+      .useValue({
+        verify: jest.fn().mockResolvedValue(true),
+        hash: jest.fn().mockResolvedValue('sentinel-hash'),
+      })
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -229,7 +235,7 @@ describe('Auth refresh rotation (e2e)', () => {
   });
 
   afterEach(async () => {
-    await app.close();
+    await app?.close();
     restoreJwtTestEnv?.();
   });
 

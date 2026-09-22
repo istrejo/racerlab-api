@@ -1,6 +1,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { JwtStrategy } from './jwt.strategy';
+import type { JwtPayload } from './model/jwt-payload.model';
 
 describe('JwtStrategy tenant resolution', () => {
   const userId = '2f1b7652-92f6-4a32-863f-26b5af5e0c12';
@@ -106,9 +107,9 @@ describe('JwtStrategy tenant resolution', () => {
   });
 
   it('rejects tokens without a valid session id before querying Prisma', async () => {
-    await expect(strategy.validate({ sub: userId })).rejects.toEqual(
-      new UnauthorizedException('Invalid access token.'),
-    );
+    await expect(
+      strategy.validate({ sub: userId } as JwtPayload),
+    ).rejects.toEqual(new UnauthorizedException('Invalid access token.'));
     expect(prisma.authSession.findFirst).not.toHaveBeenCalled();
   });
 });

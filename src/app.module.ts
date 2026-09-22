@@ -3,6 +3,7 @@ import { HealthModule } from './health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { DiagnosesModule } from './modules/diagnoses/diagnoses.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 import { MembershipsModule } from './modules/memberships/memberships.module';
 import { QuotesModule } from './modules/quotes/quotes.module';
 import { ServiceOrdersModule } from './modules/service-orders/service-orders.module';
@@ -20,6 +21,7 @@ import { WorkshopsModule } from './modules/workshops/workshops.module';
     ServiceOrdersModule,
     DiagnosesModule,
     QuotesModule,
+    InventoryModule,
   ],
 })
 export class AppModule {}

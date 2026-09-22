@@ -19,3 +19,19 @@ export const WORKSHOP_RESOURCE_DELETE_ROLES = [
   UserRole.OWNER,
   UserRole.ADMIN,
 ] as const;
+
+export const INVENTORY_READ_ROLES = [
+  UserRole.OWNER,
+  UserRole.ADMIN,
+  UserRole.MANAGER,
+  UserRole.ADVISOR,
+  UserRole.TECHNICIAN,
+  UserRole.INVENTORY_MANAGER,
+] as const;
+
+export const INVENTORY_WRITE_ROLES = [
+  UserRole.OWNER,
+  UserRole.ADMIN,
+  UserRole.MANAGER,
+  UserRole.INVENTORY_MANAGER,
+] as const;
